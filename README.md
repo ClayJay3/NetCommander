@@ -1,5 +1,13 @@
-# PythonNetCrawler
-It's universal, but probably only works for cisco switches. This project can export network maps, it provides a couple different robust methods of discovery.
+# PythonNetCommander
+This project can automagically discover all cisco switches that are communicable through the same management vlan and run a user defined set of commands on each one. Each time the given set of commands is executed on a switch it shows the output and asks the user if the result is acceptable. It also utilizes an outside-in layered approach, so it starts running commands on the 'furthest hop' switches and works it's way back to the specified 'closest hop' switch. This attempts to ensure that if anything goes wrong with one switch, you won't loose connection to the other, still functioning switches.
+
+## Intended Use
+This program was originally created to aid in running a relatively small set of switch commands on a large network. For example, if a large network's switches are using telnet, this program could be used to execute the nessesary commands to configure a massive number of devices to use SSH with a RADIUS or TACACS+ server. This program should not be used to configure single switches or switches that are not running Cisco IOS.
+
+
+```diff
+-RUN WITH CAUTION. YOU CAN EASILY MESS UP MULTIPLE SWITCH CONFIGS WITH THIS PROGRAM.-
+```
 
 ## Install
 This python program has been compiled with pyinstaller, which turns python code into a .exe file. It includes all dependencies and a python 3.8.10 installation in the executable, so no third-party applications need to be installed.
