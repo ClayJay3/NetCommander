@@ -1,0 +1,36 @@
+version: 1
+formatters:
+  simple:
+    format: '%(name)s, %(funcName)s, %(levelname)s, %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  csv:
+    format: '%(asctime)s.%(msecs)03d,%(module)s,%(funcName)s,%(levelname)s,"%(message)s"'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+handlers:
+  console:
+    class: rich.logging.RichHandler
+    level: 0
+    formatter: simple
+    rich_tracebacks: True
+  fileHandler:
+    class: logging.FileHandler
+    formatter: simple
+    level: INFO
+    mode: "w+"
+    filename: 'logs/latest.log'
+  csv:
+    class: utils.logging_handlers.CsvHandler
+    level: 0
+    formatter: csv
+    header: TIMESTAMP,MODULE,FUNCTION,LEVEL,MESSAGE
+    filename: logs/log.csv
+    new_file: True
+    delay: False
+loggers:
+  Logging_Test:
+    level: DEBUG
+    handlers: [console, fileHandler, csv]
+    propagate: False
+root:
+  level: DEBUG
+  handlers: [console, fileHandler, csv]
