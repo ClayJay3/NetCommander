@@ -3,6 +3,7 @@ from cgitb import enable
 import logging
 import os
 import sys
+from turtle import back, width
 import webbrowser
 import tkinter as tk
 from threading import Thread
@@ -11,7 +12,6 @@ from tkinter import font
 
 from pyvis.network import Network
 
-from interface.popup_window import MultipleCheckboxPopup
 from utils.open_connection import ssh_autodetect_info
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,23 +29,27 @@ class MainUI():
         self.logger = logging.getLogger(__name__)
         self.window_is_open = True
         self.grid_size = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-        self.export_options_list = ["ROUTER", "SWITCH", "WIRELESS AP", "IP PHONE", "CAMERA"]
-        self.export_option_items = []
-        self.export_options_check_values = []
+        self.switch_tree_checkboxes = []
+        self.switch_tree_check_values = []
         self.font = "antiqueolive"
-        self.window = None
         self.creds_frame = None
-        self.text_box  = None
         self.username_entrys = []
         self.password_entrys = []
         self.secret_entrys = []
         self.list = None
         self.ip_list = []
         self.discovery_list = []
+        self.export_info_list = []
         self.already_auto_discovering = False
         self.export_permission_error = False
         self.enable_telnet_check = None
         self.force_telnet_check = None
+
+        # Create UI components.
+        self.window = None
+        self.tree_view_frame = None
+        self.tree_canvas = None
+        self.closest_hop_entry = None
 
         # Open log file for displaying in console window.
         self.log_file = open("logs/latest.log", "r", encoding="utf-8")
@@ -78,7 +82,7 @@ class MainUI():
         # Set window closing actions.
         self.window.protocol("WM_DELETE_WINDOW", self.close_window)
         # Set window title.
-        self.window.title("Mostly Universal Switch Configurator")
+        self.window.title("NetCommander")
         # Set window to the front of others.
         self.window.attributes("-topmost", True)
         self.window.update()
@@ -100,27 +104,33 @@ class MainUI():
         title_frame.columnconfigure(0, weight=1)
         # Create frame for loading and config switch section.
         device_list_frame = tk.Frame(master=self.window, relief=tk.GROOVE, borderwidth=3)
-        device_list_frame.grid(row=1, rowspan=8, columnspan=5, sticky=tk.NSEW)
+        device_list_frame.grid(row=1, rowspan=1, columnspan=5, sticky=tk.NSEW)
         device_list_frame.rowconfigure(self.grid_size, weight=1)
         device_list_frame.columnconfigure(self.grid_size, weight=1)
+        # Create frame for device tree view.
+        layer_view_frame = tk.Frame(master=self.window, relief=tk.GROOVE, borderwidth=3)
+        layer_view_frame.grid(row=2, rowspan=7, column=0, columnspan=10, sticky=tk.NSEW)
+        layer_view_frame.rowconfigure(self.grid_size, weight=1)
+        layer_view_frame.columnconfigure(self.grid_size, weight=1)
+        # Set grid propogate to allow for grid resizing later.
         # Create frame for entering user login creds.
         self.creds_frame = tk.Frame(master=self.window, relief=tk.GROOVE, borderwidth=3)
         self.creds_frame.grid(row=9, columnspan=5, sticky=tk.NSEW)
         self.creds_frame.rowconfigure(self.grid_size, weight=1)
         self.creds_frame.columnconfigure(self.grid_size, weight=1)
-        # Create frame for entering quick command.
-        options_frame = tk.Frame(master=self.window, relief=tk.GROOVE, borderwidth=3)
-        options_frame.grid(row=1, rowspan=2, column=5, columnspan=5, sticky=tk.NSEW)
-        options_frame.rowconfigure(self.grid_size, weight=1)
-        options_frame.columnconfigure(self.grid_size, weight=1)
         # Create frame for console output
         console_frame = tk.Frame(master=self.window, relief=tk.SUNKEN, borderwidth=15, background="black")
-        console_frame.grid(row=3, rowspan=7, column=5, columnspan=5, sticky=tk.NSEW)
+        console_frame.grid(row=1, rowspan=1, column=5, columnspan=5, sticky=tk.NSEW)
         console_frame.rowconfigure(self.grid_size, weight=1)
         console_frame.columnconfigure(self.grid_size, weight=1)
+        # Create frame for entering quick command.
+        options_frame = tk.Frame(master=self.window, relief=tk.GROOVE, borderwidth=3)
+        options_frame.grid(row=9, rowspan=1, column=5, columnspan=5, sticky=tk.NSEW)
+        options_frame.rowconfigure(self.grid_size, weight=1)
+        options_frame.columnconfigure(self.grid_size, weight=1)
         
         # Populate title frame.
-        greeting = tk.Label(master=title_frame, text="Welcome to NetCrawler", font=(self.font, 18))
+        greeting = tk.Label(master=title_frame, text="Welcome to NetCommander!", font=(self.font, 18))
         greeting.grid()
         author = tk.Label(master=title_frame, text="Created By: Clayton Cowen", underline=True, foreground="blue")
         author.grid()
@@ -130,16 +140,44 @@ class MainUI():
         author.bind("<Button-1>", lambda event: webbrowser.open("https://www.linkedin.com/in/clayton-cowen/"))
 
         # Populate loading config frame.
-        load_config_title = tk.Label(master=device_list_frame, text="Discovery Devices", height=1, font=(self.font, 20))
-        load_config_title.grid(row=0, columnspan=len(self.grid_size), sticky=tk.N)
-        discover_warning = tk.Label(master=device_list_frame, text="(When autodiscovering only enter one IP from each subnet!)")
-        discover_warning.grid(row=0, rowspan=1, column=0, columnspan=1, sticky=tk.SW)
-        self.text_box = tk.Text(master=device_list_frame, width=10, height=5)
-        self.text_box.grid(row=1, rowspan=9, columnspan=9, sticky=tk.NSEW)
-        button = tk.Button(master=device_list_frame, text="Map Network", foreground="black", background="white", command=self.auto_discover_switches_callback)
-        button.grid(row=1, rowspan=4, column=9, sticky=tk.NSEW)
+        load_config_title = tk.Label(master=device_list_frame, text="Deploy Setup", height=1, font=(self.font, 20))
+        load_config_title.grid(row=0, columnspan=len(self.grid_size), sticky=tk.NW)
+        closest_hop_label = tk.Label(master=device_list_frame, text="'Closest hop' switch: ")
+        closest_hop_label.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.EW)
+        self.closest_hop_entry = tk.Entry(master=device_list_frame, width=10)
+        self.closest_hop_entry.grid(row=2, rowspan=1, column=1, columnspan=1, sticky=tk.EW)
         button_ping = tk.Button(master=device_list_frame, text="Ping Check", foreground="black", background="white", command=self.mass_ping_button_callback)
-        button_ping.grid(row=6, rowspan=4, column=9, sticky=tk.NSEW)
+        button_ping.grid(row=9, rowspan=1, column=0, sticky=tk.EW)
+        button_discover = tk.Button(master=device_list_frame, text="Find Switches", foreground="black", background="white", command=self.auto_discover_switches_callback)
+        button_discover.grid(row=9, rowspan=1, column=1, sticky=tk.EW)
+        discover_warning = tk.Label(master=device_list_frame, text="Deploy Commands: (Use caution! Incorrect configuration can really suck!)")
+        discover_warning.grid(row=0, rowspan=1, column=4, columnspan=6, sticky=tk.W)
+        command_textbox = tk.Text(master=device_list_frame, width=10, height=5, wrap="none")
+        command_textbox.grid(row=1, rowspan=8, column=4, columnspan=6, sticky=tk.NSEW)
+        scroll_y=tk.Scrollbar(master=device_list_frame, orient='vertical', command=command_textbox.yview)    # Add a scrollbar.
+        scroll_y.grid(row=1, rowspan=8, column=10, columnspan=1, sticky=tk.NS)
+        command_textbox['yscrollcommand'] = scroll_y.set
+        scroll_x=tk.Scrollbar(master=device_list_frame, orient='horizontal', command=command_textbox.xview)    # Add a scrollbar.
+        scroll_x.grid(row=9, rowspan=1, column=4, columnspan=6, sticky="new")
+        command_textbox['xscrollcommand'] = scroll_x.set
+
+        # Populate tree view frame.
+        # Create a scrollbar and canvas to store everything in. This is the only way to have a horizontal scrollbar for the whole frame.
+        self.tree_canvas = tk.Canvas(master=layer_view_frame, background="lightgrey")
+        self.tree_canvas.grid(row=0, rowspan=9, column=0, columnspan=10, sticky=tk.NSEW)
+        scrollx=tk.Scrollbar(master=layer_view_frame, orient='horizontal', command=self.tree_canvas.xview)    # Add a scrollbar.
+        scrollx.grid(row=10, rowspan=1, column=0, columnspan=10, sticky="ews")
+        self.tree_canvas.configure(xscrollcommand=scrollx.set)
+        # Create new frame inside of current tree frame for canvas.
+        self.tree_view_frame = tk.Frame(master=self.tree_canvas, relief=tk.GROOVE, borderwidth=3, width=100, height=100)
+        self.tree_view_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.tree_view_frame.rowconfigure(self.grid_size, weight=1)
+        # Initialize canvas window.
+        self.tree_canvas.create_window((0,0), window=self.tree_view_frame, anchor="nw", tags="frame")
+        # Set canvas event to for resizing scrollbar.
+        self.tree_canvas.bind("<Configure>",lambda e: self.tree_canvas.config(scrollregion=self.tree_canvas.bbox(tk.ALL)))
+        # Update window sizing and member vars.
+        self.tree_canvas.update_idletasks()
 
         # Populate login creds frame.
         creds_title = tk.Label(master=self.creds_frame, text="Login Credentials", font=(self.font, 18))
@@ -169,27 +207,8 @@ class MainUI():
         self.secret_entrys.append(new_secret_entry)
 
         # Populate option frame.
-        secret_label = tk.Label(master=options_frame, text="Graphing Export Options:", font=(self.font, 14))
+        secret_label = tk.Label(master=options_frame, text="Options:", font=(self.font, 14))
         secret_label.grid(row=0, column=0, columnspan=10, sticky=tk.NSEW)
-        row_counter = 1
-        column_counter = 0
-        for item in self.export_options_list:
-            # Create and store new boolean var to hold checkbox value.
-            check_value = tk.BooleanVar(self.window)
-            # Set default values to True.
-            check_value.set(True)
-            self.export_options_check_values.append(check_value)
-            # Create and place new checkbox.
-            checkbox = tk.Checkbutton(master=options_frame, text=item, variable=check_value, onvalue=True, offvalue=False)
-            checkbox.grid(row=row_counter, rowspan=1, column=column_counter, sticky=tk.W)
-            # Update counter.
-            column_counter += 1
-            # Check if we are at the end column of the frame.
-            if column_counter >= len(self.grid_size):
-                row_counter += 1
-                column_counter = 0
-            # Store value.
-            self.export_option_items.append(checkbox)
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -198,42 +217,34 @@ class MainUI():
         # Attempt to get data from cache file for username and switch ips.
         try:
             lines = self.cache_file.readlines()
-            # Check length of file.
-            if len(lines) >= 2:
-                # Get total number of ips.
-                total_ips = int(lines.pop(0))
-                # Loop through and append each ip to textbox.
-                for i in range(total_ips):
-                    self.text_box.insert(tk.END, lines.pop(0))
-                
-                # Check length of cache again for username.
-                while len(lines) > 0:
-                    # Use the first entry box initially.
-                    if len(self.username_entrys[0].get()) > 0:
-                        # Create and place new entry boxes.
-                        username_label = tk.Label(master=self.creds_frame, text="Username:")
-                        username_label.grid(row=len(self.username_entrys) + 5, column=4, sticky=tk.NSEW)
-                        new_username_entry = tk.Entry(master=self.creds_frame, width=10)
-                        new_username_entry.grid(row=len(self.username_entrys) + 5, column=5, sticky=tk.NSEW)
-                        password_label = tk.Label(master=self.creds_frame, text="Password:")
-                        password_label.grid(row=len(self.username_entrys) + 5, column=6, sticky=tk.NSEW)
-                        new_password_entry = tk.Entry(master=self.creds_frame, show="*", width=10)
-                        new_password_entry.grid(row=len(self.username_entrys) + 5, column=7, sticky=tk.NSEW)
-                        secret_label = tk.Label(master=self.creds_frame, text="Enable Secret:")
-                        secret_label.grid(row=len(self.username_entrys) + 5, column=8, sticky=tk.NSEW)
-                        new_secret_entry = tk.Entry(master=self.creds_frame, show="*", width=10)
-                        new_secret_entry.grid(row=len(self.username_entrys) + 5, column=9, sticky=tk.NSEW)
+            # Check length of cache again for username.
+            while len(lines) > 0:
+                # Use the first entry box initially.
+                if len(self.username_entrys[0].get()) > 0:
+                    # Create and place new entry boxes.
+                    username_label = tk.Label(master=self.creds_frame, text="Username:")
+                    username_label.grid(row=len(self.username_entrys) + 5, column=4, sticky=tk.NSEW)
+                    new_username_entry = tk.Entry(master=self.creds_frame, width=10)
+                    new_username_entry.grid(row=len(self.username_entrys) + 5, column=5, sticky=tk.NSEW)
+                    password_label = tk.Label(master=self.creds_frame, text="Password:")
+                    password_label.grid(row=len(self.username_entrys) + 5, column=6, sticky=tk.NSEW)
+                    new_password_entry = tk.Entry(master=self.creds_frame, show="*", width=10)
+                    new_password_entry.grid(row=len(self.username_entrys) + 5, column=7, sticky=tk.NSEW)
+                    secret_label = tk.Label(master=self.creds_frame, text="Enable Secret:")
+                    secret_label.grid(row=len(self.username_entrys) + 5, column=8, sticky=tk.NSEW)
+                    new_secret_entry = tk.Entry(master=self.creds_frame, show="*", width=10)
+                    new_secret_entry.grid(row=len(self.username_entrys) + 5, column=9, sticky=tk.NSEW)
 
-                        # Fill new entry box.
-                        new_username_entry.insert(0, lines.pop(0).strip())
+                    # Fill new entry box.
+                    new_username_entry.insert(0, lines.pop(0).strip())
 
-                        # Append entry boxes to list.
-                        self.username_entrys.append(new_username_entry)
-                        self.password_entrys.append(new_password_entry)
-                        self.secret_entrys.append(new_secret_entry)
-                    else:
-                        # Fill new entry box.
-                        username_entry.insert(0, lines.pop(0).strip())
+                    # Append entry boxes to list.
+                    self.username_entrys.append(new_username_entry)
+                    self.password_entrys.append(new_password_entry)
+                    self.secret_entrys.append(new_secret_entry)
+                else:
+                    # Fill new entry box.
+                    username_entry.insert(0, lines.pop(0).strip())
         except Exception:
             self.logger.error("Unable to read cache file. It must be corrupted.")
 
@@ -295,12 +306,6 @@ class MainUI():
         if any(len(entry.get()) > 0 for entry in self.password_entrys):
             # Check if auto discover has already been started.
             if not self.already_auto_discovering:
-                # Open the popup and get the return values.
-                export_data_selections = []
-                # Loop through the current selections and store their value in the user submit array.
-                for check_val in self.export_options_check_values:
-                    # Get var boolean and store.
-                    export_data_selections.append(check_val.get())
                 # Clear data lists from discover module.
                 clear_discoveries()
                 # Get username and password lists.
@@ -315,14 +320,9 @@ class MainUI():
                         usernames.pop(i)
                         passwords.pop(i)
                         enable_secrets.pop(i)
-                # Get text from textbox.
-                text = self.text_box.get('1.0', tk.END).splitlines()
-                if len(text) > 25:
-                    # Show warning if textbox has more than 25 entries.
-                    messagebox.showwarning(title="WARNING!", message="Discovering from too many devices at the same time may cause slow ssh/telnet console output which can result in parsing errors.")
 
                 # Check if we are able to auth with the first device at least before continuing.
-                test_ip = text[0].strip()
+                test_ip = self.closest_hop_entry.get()
                 auth_success = False
                 # Get secret
                 # Attempt to auth.
@@ -335,7 +335,7 @@ class MainUI():
                 # Only continue if the first switch login was successful.
                 if auth_success:
                     # Start backprocess for auto discover.
-                    Thread(target=self.auto_discover_back_process, args=(text, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), True, export_data_selections)).start()
+                    Thread(target=self.auto_discover_back_process, args=([self.closest_hop_entry.get()], usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), True)).start()
                     # Set safety toggle.
                     self.already_auto_discovering = True
                     # Print log.
@@ -354,16 +354,21 @@ class MainUI():
             self.logger.warning("You must enter username and password credentials. Otherwise, I can't log into the switch!")
             messagebox.showwarning(title="Warning", message="You must enter username and password credentials.")
 
-    def auto_discover_back_process(self, text, usernames, passwords, enable_secrets, enable_telnet, force_telnet, export_data=True, export_data_selections=[]) -> None:
+    def auto_discover_back_process(self, text, usernames, passwords, enable_secrets, enable_telnet, force_telnet, export_data=True) -> None:
         """
         Helper function for auto discover.
         """
         # Discover ips.
         discover_ip_list, export_info = cdp_auto_discover(text, usernames, passwords, enable_secrets, enable_telnet, force_telnet, export_data)
 
-        # Store values in discover list array.
+        # Store values in discover list array after clearing it.
+        self.discovery_list.clear()
         for addr in discover_ip_list:
             self.discovery_list.append(addr)
+        # Store output values in export list after clearing it.
+        self.export_info_list.clear()
+        for info in export_info:
+            self.export_info_list.append(info)
 
         # If export_data is toggled on, then write the result data to a CSV file.
         if export_data and len(export_info) > 0:
@@ -418,22 +423,8 @@ class MainUI():
                 colors = []
                 filtered_export_info = []
                 for device in export_info:
-                    # Check if the matching data list isn't empty.
-                    if export_data_selections is not None and len(export_data_selections) > 0:
-                        # Create list of booleans for device type.
-                        type_boolean_list = [device["is_router"], device["is_switch"], device["is_wireless_ap"], device["is_phone"], device["is_camera"]]
-                        # Get a list of matching values for corresponding positions in the list.
-                        matching = False
-                        for i, bool_val in enumerate(export_data_selections):
-                            # Check if both are true.
-                            if bool_val and type_boolean_list[i]:
-                                matching = True
-                    else:
-                        # Just export everything is the user didn't choose.
-                        matching = True
-
-                    # If the device is valid per user input, then append to new list and do other stuff.
-                    if matching:
+                    # Check if the current device is a switch.
+                    if device["is_switch"]:
                         # Remove license info from dictionary.
                         device.pop("license_info", None)
                         # Append device to new list.
@@ -456,7 +447,7 @@ class MainUI():
                             # Orange.
                             colors.append("#eb6200")
                         elif device["is_switch"]:       # is_switch and is_router can both be true, router overides.
-                            if device["is_router"] and export_data_selections[0]:
+                            if device["is_router"]:
                                 # Green.
                                 colors.append("#21ad11")
                             else:
@@ -568,7 +559,7 @@ class MainUI():
         self.logger.info("\n---------------------------------------------------------\nPinging all devices now...\n---------------------------------------------------------")
 
         # Get text from textbox.
-        text = self.text_box.get('1.0', tk.END).splitlines()
+        text = [self.closest_hop_entry.get()]
         # Ping each switch listed in the textbox to get a list containing their status.
         Thread(target=ping_of_death, args=(text, self.ip_list,)).start()
 
@@ -594,11 +585,10 @@ class MainUI():
 
         # Update the textbox with the discovering list if it's not empty and not being updated.
         if len(self.discovery_list) > 0 and not self.already_auto_discovering:
-            # Delete current contents of textbox.
-            self.text_box.delete("1.0", tk.END)
-            # Loop through and append each ip to textbox.
-            for i in range(len(self.discovery_list)):
-                self.text_box.insert(tk.END, self.discovery_list.pop(0) + "\n")
+            # Delete the current contents of the frame.
+            for widget in self.tree_view_frame.winfo_children():
+                # Remove widget.
+                widget.destroy()
 
             # Check if an error occured.
             if self.export_permission_error:
@@ -607,11 +597,62 @@ class MainUI():
                 # Set toggle.
                 self.export_permission_error = False
             else:
+                # Clear old checkbox list.
+                self.switch_tree_check_values.clear()
+                self.switch_tree_checkboxes.clear()
+                # Get the max recursion. number from the device list.
+                recursion_layers = max([info["recursion_level"] for info in self.export_info_list]) + 1
+                # Reconfig column numbers to match recursion levels.
+                self.tree_view_frame.columnconfigure(list(range(recursion_layers)), weight=1)
+                # Populate the tree view window with a textbox per layer containing checkboxes representing the devices on that layer.
+                approx_column_span = 2
+                for i in range(recursion_layers):
+                    # Create new textbox and label.
+                    text_box_label = tk.Label(master=self.tree_view_frame, text=f"Layer {i + 1}")
+                    text_box_label.grid(row=0, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.SW)
+                    text_box = tk.Text(master=self.tree_view_frame, width=10, height=5)
+                    text_box.grid(row=1, rowspan=9, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.NSEW)
+
+                    # Get all devices on current recursion layer.
+                    layer_devices = [device for device in self.export_info_list if device["recursion_level"] == i]
+                    # Populate textbox with checkboxes.
+                    for device in layer_devices:
+                        # Check if device is a switch.
+                        if device["is_switch"]:
+                            # Create checkbox and boolean var.
+                            check_value = tk.BooleanVar(text_box)
+                            checkbox = tk.Checkbutton(master=text_box, text=f"{device['hostname']} ({device['ip_addr']})", variable=check_value, onvalue=True, offvalue=False)
+                            # Append to list.
+                            self.switch_tree_check_values.append(check_value)
+                            self.switch_tree_checkboxes.append(checkbox)
+                            # Add to textbox.
+                            text_box.window_create("1.0", window=checkbox)
+                            text_box.insert("end", "\n")
+
+                    # Add scrollbar to textbox.
+                    scrolly=tk.Scrollbar(master=self.tree_view_frame, orient='vertical', command=text_box.yview)    # Add a scrollbar.
+                    scrolly.grid(row=1, rowspan=9, column=(i * approx_column_span) + (approx_column_span - 1), columnspan=1, sticky="nse")
+                    text_box['yscrollcommand'] = scrolly.set
+                    scrollx=tk.Scrollbar(master=self.tree_view_frame, orient='horizontal', command=text_box.xview)    # Add a scrollbar.
+                    scrollx.grid(row=9, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky="ews")
+                    text_box['xscrollcommand'] = scrollx.set
+
+                # Set the frame switch to match the canvas and requested size, this makes it scroll past the max grid size.
+                self.tree_canvas.itemconfig('frame', width=recursion_layers * 325)
+                self.tree_canvas.config(scrollregion=self.tree_canvas.bbox(tk.ALL))
+                
+                # Open exported html in a new webbrowser.
+                webbrowser.open('file://' + os.path.realpath("exports/hierarchical_graph.html"))
+
                 # Show messagebox stating discovery is complete.
                 messagebox.showinfo(title="Discovery Finished", message="Discovery is finished. All discovered IPs have been put in the IP textbox. If exports were enabled, they have been saved to the local directory of this app.")
 
             # Clear list just to be sure.
             self.discovery_list.clear()
+
+        # Update the tree frame canvas and canvas frame sizes.
+        self.tree_canvas.itemconfig('frame', height=self.tree_canvas.winfo_height())
+        self.tree_canvas.update_idletasks()
 
         # Call main window event loop.
         self.window.update()
@@ -626,23 +667,20 @@ class MainUI():
         # Set bool value.
         self.window_is_open = False
         
-        # Get contents of text box and username entry.
-        switch_ips = self.text_box.get('1.0', tk.END).splitlines()
-        switch_ips = list(filter(None, switch_ips))
         # Clear file and move back to start marker.
         self.cache_file.truncate(0)
         self.cache_file.seek(0)
         # Store contents of username in cache file.
-        switch_ips.insert(0, str(len(switch_ips)))
+        cache_data = []
         for user_entry in self.username_entrys:
             # Get value.
             username = user_entry.get()
             # Make sure value isn't empty.
             if len(username) > 0:
                 # Append value.
-                switch_ips.append(username)
+                cache_data.append(username)
         # Store contents of switch list in cache file.
-        for line in switch_ips:
+        for line in cache_data:
             # Only write if line isn't empty.
             if len(line) > 0:
                 self.cache_file.write(line + "\n")

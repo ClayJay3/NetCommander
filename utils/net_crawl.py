@@ -1,7 +1,6 @@
 # Import required packages and modules.
 from ast import Tuple
 from functools import partial
-from os import device_encoding
 import re
 import logging
 from multiprocessing.pool import ThreadPool
