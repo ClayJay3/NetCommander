@@ -172,6 +172,7 @@ class MainUI():
         self.tree_view_frame = tk.Frame(master=self.tree_canvas, relief=tk.GROOVE, borderwidth=3, width=100, height=100)
         self.tree_view_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self.tree_view_frame.rowconfigure(self.grid_size, weight=1)
+        # self.tree_view_frame.columnconfigure(list(range(50)), weight=1)
         # Initialize canvas window.
         self.tree_canvas.create_window((0,0), window=self.tree_view_frame, anchor="nw", tags="frame")
         # Set canvas event to for resizing scrollbar.
@@ -561,7 +562,14 @@ class MainUI():
         # Get text from textbox.
         text = [self.closest_hop_entry.get()]
         # Ping each switch listed in the textbox to get a list containing their status.
-        Thread(target=ping_of_death, args=(text, self.ip_list,)).start()
+        # Thread(target=ping_of_death, args=(text, self.ip_list,)).start()
+
+        test = []
+        for selected, device in zip(self.switch_tree_check_values, self.export_info_list):
+            if selected.get():
+                test.append(device)
+
+        print(test)
 
     def update_window(self) -> None:
         """
@@ -601,20 +609,30 @@ class MainUI():
                 self.switch_tree_check_values.clear()
                 self.switch_tree_checkboxes.clear()
                 # Get the max recursion. number from the device list.
-                recursion_layers = max([info["recursion_level"] for info in self.export_info_list]) + 1
-                # Reconfig column numbers to match recursion levels.
-                self.tree_view_frame.columnconfigure(list(range(recursion_layers)), weight=1)
+                recursion_layers = max([info["recursion_level"] for info in self.export_info_list]) + 2
                 # Populate the tree view window with a textbox per layer containing checkboxes representing the devices on that layer.
-                approx_column_span = 2
+                approx_column_span = 3
+                # Reconfig column numbers to match recursion levels.
+                self.tree_view_frame.columnconfigure(list(range(recursion_layers * approx_column_span)), weight=1)
+                # Get and store the closest hop entry.
+                closest_hop_switch = self.closest_hop_entry.get()
                 for i in range(recursion_layers):
-                    # Create new textbox and label.
-                    text_box_label = tk.Label(master=self.tree_view_frame, text=f"Layer {i + 1}")
-                    text_box_label.grid(row=0, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.SW)
-                    text_box = tk.Text(master=self.tree_view_frame, width=10, height=5)
-                    text_box.grid(row=1, rowspan=9, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.NSEW)
+                    # Check if we are at index -1.
+                    if i == 0:
+                        # Get the device that matches the given closest hop entry ip address.
+                        layer_devices = [device for device in self.export_info_list if device["ip_addr"] == closest_hop_switch]
+                    else:
+                        # Get all devices on current recursion layer.
+                        layer_devices = [device for device in self.export_info_list if device["recursion_level"] == (i - 1) and device["ip_addr"] != closest_hop_switch]
 
-                    # Get all devices on current recursion layer.
-                    layer_devices = [device for device in self.export_info_list if device["recursion_level"] == i]
+                    # Check if any device in the recursion layer is a switch, at least one must be true to add new column.
+                    if any([device["is_switch"] for device in layer_devices]):
+                        # Create new textbox and label.
+                        text_box_label = tk.Label(master=self.tree_view_frame, text=f"'Hop' Distance {i}")
+                        text_box_label.grid(row=0, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.SW)
+                        text_box = tk.Text(master=self.tree_view_frame, width=10, height=5)
+                        text_box.grid(row=1, rowspan=9, column=(i * approx_column_span), columnspan=approx_column_span, sticky=tk.NSEW)
+
                     # Populate textbox with checkboxes.
                     for device in layer_devices:
                         # Check if device is a switch.
