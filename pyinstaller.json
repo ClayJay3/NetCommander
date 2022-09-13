@@ -7,7 +7,7 @@
   },
   {
    "optionDest": "filenames",
-   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/PythonSwitchConfigurator/run.py"
+   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/NetCommander/NetCommander/run.py"
   },
   {
    "optionDest": "onefile",
@@ -74,16 +74,16 @@
    "value": "rich"
   },
   {
-   "optionDest": "pathex",
-   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/PythonSwitchConfigurator/interface"
-  },
-  {
-   "optionDest": "pathex",
-   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/PythonSwitchConfigurator/utils"
-  },
-  {
    "optionDest": "collect_all",
    "value": "pyvis"
+  },
+  {
+   "optionDest": "pathex",
+   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/NetCommander/NetCommander/interface"
+  },
+  {
+   "optionDest": "pathex",
+   "value": "C:/Users/clayton.cowen/Documents/PythonSwitchConfiguratorProject/NetCommander/NetCommander/utils"
   }
  ],
  "nonPyinstallerOptions": {

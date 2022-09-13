@@ -619,6 +619,9 @@ class MainUI():
         # Create instance variables.
         bad_deploys = []
 
+        # Set window size. Take it out of fullscreen.
+        self.window.wm_state('iconic')
+
         # Loop through all selected devices.
         for device in devices:
             # Attempt to login to the first device.
@@ -643,12 +646,12 @@ class MainUI():
                             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                             messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
 
-                    # Ask the user if the output is correct.
-                    correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct?")         #### CRASHES HERE.
-                    # Ask the user if they want to continue.
-                    continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
                     # Show the output to the user and ask if it is correct.
                     text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
+                    # Ask the user if the output is correct.
+                    correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct?")
+                    # Ask the user if they want to continue.
+                    continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
                     # If the output was incorrect add the switch to a list.
                     if not correct_output:
@@ -678,6 +681,9 @@ class MainUI():
                 messagebox.showerror(message=f"Couldn't connect to {device['ip_addr']}. Moving on to next device.")
                 # Append current device to bad deploy list.
                 bad_deploys.append(device)
+
+            # Update main window.
+            self.window.update()
 
         return bad_deploys
 
@@ -790,13 +796,15 @@ class MainUI():
                             text_box.window_create("1.0", window=checkbox)
                             text_box.insert("end", "    \n")
 
-                    # Add scrollbar to textbox.
-                    scrolly=tk.Scrollbar(master=self.tree_view_frame, orient='vertical', command=text_box.yview)    # Add a scrollbar.
-                    scrolly.grid(row=1, rowspan=9, column=(i * approx_column_span) + (approx_column_span - 1), columnspan=1, sticky="nse")
-                    text_box['yscrollcommand'] = scrolly.set
-                    scrollx=tk.Scrollbar(master=self.tree_view_frame, orient='horizontal', command=text_box.xview)    # Add a scrollbar.
-                    scrollx.grid(row=9, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky="ews")
-                    text_box['xscrollcommand'] = scrollx.set
+                    # Check if any device in the recursion layer is a switch, at least one must be true to add scrollbar over textbox.
+                    if any([device["is_switch"] for device in layer_devices]):
+                        # Add scrollbar to textbox.
+                        scrolly=tk.Scrollbar(master=self.tree_view_frame, orient='vertical', command=text_box.yview)    # Add a scrollbar.
+                        scrolly.grid(row=1, rowspan=9, column=(i * approx_column_span) + (approx_column_span - 1), columnspan=1, sticky="nse")
+                        text_box['yscrollcommand'] = scrolly.set
+                        scrollx=tk.Scrollbar(master=self.tree_view_frame, orient='horizontal', command=text_box.xview)    # Add a scrollbar.
+                        scrollx.grid(row=9, rowspan=1, column=(i * approx_column_span), columnspan=approx_column_span, sticky="ews")
+                        text_box['xscrollcommand'] = scrollx.set
 
                 # Set the frame switch to match the canvas and requested size, this makes it scroll past the max grid size.
                 self.tree_canvas.itemconfig('frame', width=recursion_layers * 325)
