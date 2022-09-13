@@ -16,6 +16,8 @@ This python program has been compiled with pyinstaller, which turns python code 
         into a single file.
       - onefolder.zip offers faster execution, but the application directory is more cluttered.
   2) Copy a shortcut to the desktop and open the program.
+  
+  OR download and install the setup .exe file.
 
 ## Compile
 If your wanting to make code changes or just want the latest build, you'll need to setup the pip environment and use pyinstaller to recompile the executable.
