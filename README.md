@@ -8,6 +8,7 @@ This program was originally created to aid in running a relatively small set of 
 ```diff
 -RUN WITH CAUTION. YOU CAN EASILY MESS UP MULTIPLE SWITCH CONFIGS WITH THIS PROGRAM.-
 ```
+![test](https://user-images.githubusercontent.com/26121134/191029544-7c153543-9f12-429d-95b0-223203e79b9e.PNG)
 
 ## Install
 This python program has been compiled with pyinstaller, which turns python code into a .exe file. It includes all dependencies and a python 3.8.10 installation in the executable, so no third-party applications need to be installed.
