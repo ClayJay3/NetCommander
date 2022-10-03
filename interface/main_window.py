@@ -626,7 +626,7 @@ class MainUI():
         for device in devices:
             # Attempt to login to the first device.
             ssh_device = ssh_autodetect_info(usernames, passwords, enable_secrets, enable_telnet, force_telnet, device["ip_addr"])
-            connection = ssh_telnet(ssh_device, enable_telnet, force_telnet, store_config_info=False)
+            connection = ssh_telnet(ssh_device, enable_telnet, force_telnet, store_config_info=True)
             
             # Check if device connection was successful.
             if connection is not None and connection.is_alive():
