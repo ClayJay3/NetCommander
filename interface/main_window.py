@@ -42,6 +42,7 @@ class MainUI():
         self.already_auto_discovering = False
         self.export_permission_error = False
         self.enable_telnet_check = None
+        self.change_vlan_check = None
         self.force_telnet_check = None
 
         # Create UI components.
@@ -89,6 +90,7 @@ class MainUI():
         self.window.attributes("-topmost", False)
         # Create checkbox variables.
         self.enable_telnet_check = tk.BooleanVar(self.window)
+        self.change_vlan_check = tk.BooleanVar(self.window)
         self.force_telnet_check = tk.BooleanVar(self.window)
 
         # Setup window grid layout.
@@ -212,6 +214,8 @@ class MainUI():
         # Populate option frame.
         secret_label = tk.Label(master=options_frame, text="Options:", font=(self.font, 14))
         secret_label.grid(row=0, column=0, columnspan=10, sticky=tk.NSEW)
+        enable_vlan_change_checkbox = tk.Checkbutton(master=options_frame, text="Change Vlan 1 access port to Vlan 60", variable=self.change_vlan_check, onvalue=True, offvalue=False)
+        enable_vlan_change_checkbox.grid(row=1, rowspan=1, column=0, columnspan=1, sticky=tk.E)
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -645,6 +649,39 @@ class MainUI():
                         except ReadTimeout:
                             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                             messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+
+                    # Check if the user have enabled vlan changing.
+                    if self.change_vlan_check.get():
+                        # Loop through interfaces and get a list of interfaces with interfaces on VLAN1.
+                        interface_vlan_change_list = []
+                        for interface in ssh_device["interfaces"]:
+                            # Check the interface vlan.
+                            if interface["switchport access vlan"] == 0 and interface["switchport mode access"] and not interface["switchport mode trunk"]:
+                                interface_vlan_change_list.append(interface["name"])
+
+                        # Check that we have at least 1 interface to change.
+                        vlan_command_text = ""
+                        if len(interface_vlan_change_list) > 0:
+                            # Append interfaces changed to output
+                            output += f"\n\n{interface_vlan_change_list}"
+                            # Build commands list for vlan change.
+                            vlan_command_text += "end\nconf t\nint range "
+                            for interface in interface_vlan_change_list:
+                                vlan_command_text += interface + ", "
+                            vlan_command_text = vlan_command_text[:-2] + "\n"
+                            vlan_command_text += "sw acc vlan 60\nend\n"
+
+                        # Run the commands on the switch and show output, then ask the user if the output looks good.
+                        output += "\n\n"
+                        for line in vlan_command_text.splitlines():
+                            # Catch timeouts.
+                            try:
+                                # Send the current command to the switch.
+                                output += connection.send_command(line, expect_string="#")
+                                # output += f"Ran command: {line}\n"
+                            except ReadTimeout:
+                                self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
+                                messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
 
                     # Show the output to the user and ask if it is correct.
                     text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
