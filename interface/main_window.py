@@ -51,6 +51,9 @@ class MainUI():
         self.tree_view_frame = None
         self.tree_canvas = None
         self.closest_hop_entry = None
+        self.vlan_old_entry = None
+        self.vlan_new_entry = None
+        self.vlan_entries_state_enabled = True
 
         # Open log file for displaying in console window.
         self.log_file = open("logs/latest.log", "r", encoding="utf-8")
@@ -214,8 +217,16 @@ class MainUI():
         # Populate option frame.
         secret_label = tk.Label(master=options_frame, text="Options:", font=(self.font, 14))
         secret_label.grid(row=0, column=0, columnspan=10, sticky=tk.NSEW)
-        enable_vlan_change_checkbox = tk.Checkbutton(master=options_frame, text="Change Vlan 1 access port to Vlan 60", variable=self.change_vlan_check, onvalue=True, offvalue=False)
+        enable_vlan_change_checkbox = tk.Checkbutton(master=options_frame, variable=self.change_vlan_check, onvalue=True, offvalue=False)
         enable_vlan_change_checkbox.grid(row=1, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        vlan_change_text = tk.Label(master=options_frame, text="Change VLAN", font=(self.font, 10))
+        vlan_change_text.grid(row=1, column=1, columnspan=1, sticky=tk.W)
+        self.vlan_old_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if str.isdigit(input) or input == "" else False), "%P"))
+        self.vlan_old_entry.grid(row=1, column=2, sticky=tk.W)
+        vlan_change_text = tk.Label(master=options_frame, text=" access ports to VLAN", font=(self.font, 10))
+        vlan_change_text.grid(row=1, column=3, columnspan=1, sticky=tk.W)
+        self.vlan_new_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (str.isdigit(input) or input == "") else False), "%P"))
+        self.vlan_new_entry.grid(row=1, column=4, sticky=tk.W)
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -652,12 +663,23 @@ class MainUI():
 
                     # Check if the user have enabled vlan changing.
                     if self.change_vlan_check.get():
+                        # Get vlan new and old numbers from the user.
+                        old_vlan = self.vlan_old_entry.get()
+                        # Change vlan 1 to 0.
+                        if int(old_vlan) <= 1:
+                            old_vlan = 0
+                        new_vlan = self.vlan_new_entry.get()
+
                         # Loop through interfaces and get a list of interfaces with interfaces on VLAN1.
                         interface_vlan_change_list = []
                         for interface in ssh_device["interfaces"]:
-                            # Check the interface vlan.
-                            if interface["switchport access vlan"] == 0 and interface["switchport mode access"] and not interface["switchport mode trunk"]:
-                                interface_vlan_change_list.append(interface["name"])
+                            # Catch key errors for malformed interface output.
+                            try:
+                                # Check the interface vlan.
+                                if interface["switchport access vlan"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Po" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                                    interface_vlan_change_list.append(interface["name"])
+                            except KeyError:
+                                self.logger.error(f"KeyError: An interface output for {device['hostname']} was not received properly, skipping...")
 
                         # Check that we have at least 1 interface to change.
                         vlan_command_text = ""
@@ -669,7 +691,7 @@ class MainUI():
                             for interface in interface_vlan_change_list:
                                 vlan_command_text += interface + ", "
                             vlan_command_text = vlan_command_text[:-2] + "\n"
-                            vlan_command_text += "sw acc vlan 60\nend\n"
+                            vlan_command_text += f"sw acc vlan {new_vlan}\nend\n"
 
                         # Run the commands on the switch and show output, then ask the user if the output looks good.
                         output += "\n\n"
@@ -677,8 +699,8 @@ class MainUI():
                             # Catch timeouts.
                             try:
                                 # Send the current command to the switch.
-                                output += connection.send_command(line, expect_string="#")
-                                # output += f"Ran command: {line}\n"
+                                # output += connection.send_command(line, expect_string="#")
+                                output += f"Ran command: {line}\n"
                             except ReadTimeout:
                                 self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                                 messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
@@ -775,6 +797,20 @@ class MainUI():
             self.log_file.seek(where)
         else:
             self.list.insert(0, line)
+
+        # Update options entries and checkboxes.
+        if not self.change_vlan_check.get() and self.vlan_entries_state_enabled:
+            # Disable elements.
+            self.vlan_old_entry.configure(state="disable")
+            self.vlan_new_entry.configure(state="disable")
+            # Update toggle var.
+            self.vlan_entries_state_enabled = False
+        elif self.change_vlan_check.get() and not self.vlan_entries_state_enabled:
+            # Disable elements.
+            self.vlan_old_entry.configure(state="normal")
+            self.vlan_new_entry.configure(state="normal")
+            # Update toggle var.
+            self.vlan_entries_state_enabled = True
 
         # Update the textbox with the discovering list if it's not empty and not being updated.
         if len(self.discovery_list) > 0 and not self.already_auto_discovering:
