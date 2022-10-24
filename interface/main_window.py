@@ -601,27 +601,33 @@ class MainUI():
         text = self.command_textbox.get('1.0', tk.END)
 
         # Check if selected devices list is empty.
-        if len(selected_devices) > 0:        
-            # Before starting threads, ask user if they are sure they want to continue.
-            self.logger.info("Asking user if they are sure they want to start the deploy process...")
-            user_result = messagebox.askyesno(title="ATTENTION!", message="Are you sure you want to start the deploy process? This will make changes to the devices!")
-            # Check user choice.
-            if user_result:
-                # Print log.
-                self.logger.info("Command deploy has been started!")
-                # Start a new thread that connects to each ip and runs the given commands.
-                # Thread(target=self.deploy_button_back_process, args=(text, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())).start()
-                bad_deploys = self.deploy_button_back_process(text, selected_devices, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
-
-                # Print log and show messagebox stating the deploy has finished.
-                self.logger.info(f"The command deploy has finished! {len(bad_deploys)} out of {len(selected_devices)} did not successfully execute the given commands. Opening window with the IPs now...")
-                messagebox.showinfo(message=f"The command deploy has finished! {len(bad_deploys)} out of {len(selected_devices)} did not successfully execute the given commands.")
-                # Check if we need to open the window.
-                if len(bad_deploys) > 0:
-                    text_popup(title="Bad Deploy Devices", text=[f"{device['ip_addr']} - {device['hostname']}\n" for device in bad_deploys])
+        if len(selected_devices) > 0:
+            # Check to make sure the user entered something for the vlan change if selected.
+            if self.change_vlan_check.get() and len(self.vlan_old_entry.get()) <= 0 and len(self.vlan_new_entry.get()) <= 0:
+                # Print log and show messagebox.
+                self.logger.warning("Can't start deploy because no vlans have been entered to change! If you don't want to enter vlans, then uncheck the box in the options pane.")
+                messagebox.showwarning(message="Can't start deploy because the user didn't specify old and new vlans even though the checkbox was ticked.")
             else:
-                # Print log.
-                self.logger.info("Command deploy has been canceled.")
+                # Before starting threads, ask user if they are sure they want to continue.
+                self.logger.info("Asking user if they are sure they want to start the deploy process...")
+                user_result = messagebox.askyesno(title="ATTENTION!", message="Are you sure you want to start the deploy process? This will make changes to the devices!")
+                # Check user choice.
+                if user_result:
+                    # Print log.
+                    self.logger.info("Command deploy has been started!")
+                    # Start a new thread that connects to each ip and runs the given commands.
+                    # Thread(target=self.deploy_button_back_process, args=(text, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())).start()
+                    bad_deploys = self.deploy_button_back_process(text, selected_devices, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
+
+                    # Print log and show messagebox stating the deploy has finished.
+                    self.logger.info(f"The command deploy has finished! {len(bad_deploys)} out of {len(selected_devices)} did not successfully execute the given commands. Opening window with the IPs now...")
+                    messagebox.showinfo(message=f"The command deploy has finished! {len(bad_deploys)} out of {len(selected_devices)} did not successfully execute the given commands.")
+                    # Check if we need to open the window.
+                    if len(bad_deploys) > 0:
+                        text_popup(title="Bad Deploy Devices", text=[f"{device['ip_addr']} - {device['hostname']}\n" for device in bad_deploys])
+                else:
+                    # Print log.
+                    self.logger.info("Command deploy has been canceled.")
         else:
             # Print log and show messagebox.
             self.logger.warning("Can't start deploy because no devices have been selected.")
