@@ -576,6 +576,9 @@ class MainUI():
         --------
             Nothing
         """
+        # Create deploy output directory.
+        os.makedirs("deploy_outputs", exist_ok=True)
+
         # Loop through each boolean value and match it to the device ip.
         selected_devices = []
         for selected, device in zip(self.switch_tree_check_values, self.selection_devices_list):
@@ -719,8 +722,12 @@ class MainUI():
 
                         # Show the output to the user and ask if it is correct.
                         text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
+                        # Write output to a file.
+                        with open(f"deploy_outputs/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
+                            for line in output:
+                                file.write(line)
                         # Ask the user if the output is correct.
-                        correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct?")
+                        correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
                         # Ask the user if they want to continue.
                         continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
