@@ -332,19 +332,55 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                 # Parse and store interfaces output.
                 ###########################################################################
                 # Get interface output.
-                interface_output = connection.send_command("show interface status", expect_string=prompt)
+                interface_output = connection.send_command("show interface status", expect_string=prompt).strip()
 
                 # Parse interface output.
-                output_split = interface_output.splitlines()[2:]
-                for line in output_split:
-                    # Check length of line.
-                    if len(line) > 2:
-                        # Split the current line by spaces.
-                        line = re.split(" +", line)
-                        # Keep the interface name and strip it of leading and trailing whitespace.
-                        name = line[0].strip()
-                        # Append new dictionary to interfaces list.
-                        interfaces.append({"name" : name})
+                data_keys = re.split(" +", interface_output.splitlines()[0])
+                int_output = re.split("\n\n", interface_output)[0].splitlines()[1:]
+                interface_details = []
+                for line in int_output:
+                    # Split line by spaces.
+                    line = re.split(" +", line)
+                    # Check if the last element contains just SFP. If so, then join the last two elements together.
+                    if line[-1] == "SFP" or line[-1] == "Present":
+                        # Get the last two elements and add them together.
+                        new_type = line.pop(-2) + " " + line.pop(-1)
+                        # Reappend to line.
+                        line.append(new_type)
+                    # If the array is greater than a certain length, then the desc must have spaces.
+                    if len(line) > 7:
+                        # Break data back apart to isolate desc.
+                        last_data = line[-5:]
+                        first_data = [line[0]]
+                        # Join desc back into a single string.
+                        inbetween = [" ".join(line[1:-5])]
+                        # Rebuild line.
+                        line = first_data + inbetween + last_data
+                    # If the array is less than a certain length, then the desc must be empty.
+                    if len(line) < 7:
+                        # Check if the interface is a port channel.
+                        if "Po" not in line[0]:
+                            # Break data back apart to isolate desc.
+                            last_data = line[-5:]
+                            first_data = [line[0]]
+                            # Join desc back into a single string.
+                            inbetween = [""]
+                            # Rebuild line.
+                            line = first_data + inbetween + last_data
+                        else:
+                            # Break data back apart to isolate desc.
+                            last_data = line[-4:]
+                            first_data = [line[0]]
+                            # Join desc back into a single string.
+                            inbetween = [""]
+                            # Rebuild line.
+                            line = first_data + inbetween + last_data + [""]
+                    # Match/zip values into a dictionary with the keys being the labels from the first line.
+                    interface_details.append(dict(zip(data_keys, line)))
+
+                for interface_dict in interface_details:
+                    # Even though we parsed all the data in the code above, we are just going to use two of the values for now.
+                    interfaces.append({"name" : interface_dict["Port"], "vlan_status": interface_dict["Vlan"]})
 
                 ## Get individual interface data.
                 # Split up config by !.
@@ -457,7 +493,7 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                         # Split line into words at each whitespace.
                         line = re.split(" +", line)
                         # Check if vlan is active.
-                        if "active" in line[2]:
+                        if len(line) >= 3 and "active" in line[2]:
                             # Get data.
                             vlan = line[0]
                             name = line[1]

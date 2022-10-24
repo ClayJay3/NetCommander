@@ -43,19 +43,22 @@ def main() -> None:
     """
     Main program method.
     """
-    # Initialize logger.
-    logger = setup_logger(LOGGING_LEVEL)
+    try:
+        # Initialize logger.
+        logger = setup_logger(LOGGING_LEVEL)
 
-    # Start UI.
-    interface = main_window.MainUI()
-    interface.initialize_window()
+        # Start UI.
+        interface = main_window.MainUI()
+        interface.initialize_window()
 
-    # Main loop that runs as long as the main window is open.
-    while interface.get_is_window_open():
-        # Update window.
-        interface.update_window()
-        # Sleep
-        time.sleep(1/120)
+        # Main loop that runs as long as the main window is open.
+        while interface.get_is_window_open():
+            # Update window.
+            interface.update_window()
+            # Sleep
+            time.sleep(1/120)
+    except Exception as exception:
+        logger.critical("MAIN THREAD CRASH:", exc_info=exception, stack_info=True)
 
 if __name__ == "__main__":
     # Call main function.
