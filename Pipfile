@@ -15,6 +15,7 @@ setuptools = "*"
 gevent = "*"
 pyvis = "*"
 auto-py-to-exe = "*"
+more-itertools = "*"
 
 [dev-packages]
 
