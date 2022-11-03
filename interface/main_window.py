@@ -1,7 +1,11 @@
+import datetime
 import logging
+from msilib.schema import Directory
 import os
+import re
 import sys
 import webbrowser
+import more_itertools as mit
 import tkinter as tk
 from threading import Thread
 from tkinter import messagebox
@@ -577,7 +581,8 @@ class MainUI():
             Nothing
         """
         # Create deploy output directory.
-        os.makedirs("deploy_outputs", exist_ok=True)
+        directory_name = f"deploy_outputs/{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        os.makedirs(directory_name, exist_ok=True)
 
         # Loop through each boolean value and match it to the device ip.
         selected_devices = []
@@ -620,7 +625,7 @@ class MainUI():
                     self.logger.info("Command deploy has been started!")
                     # Start a new thread that connects to each ip and runs the given commands.
                     # Thread(target=self.deploy_button_back_process, args=(text, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())).start()
-                    bad_deploys = self.deploy_button_back_process(text, selected_devices, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
+                    bad_deploys = self.deploy_button_back_process(text, selected_devices, usernames, passwords, enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), directory_name)
 
                     # Print log and show messagebox stating the deploy has finished.
                     self.logger.info(f"The command deploy has finished! {len(bad_deploys)} out of {len(selected_devices)} did not successfully execute the given commands. Opening window with the IPs now...")
@@ -636,7 +641,7 @@ class MainUI():
             self.logger.warning("Can't start deploy because no devices have been selected.")
             messagebox.showwarning(message="Can't start deploy because no devices have been selected.")
 
-    def deploy_button_back_process(self, command_text, devices, usernames, passwords, enable_secrets, enable_telnet, force_telnet) -> None:
+    def deploy_button_back_process(self, command_text, devices, usernames, passwords, enable_secrets, enable_telnet, force_telnet, directory_name="deploy_outputs/") -> None:
         """
         Helper function for Deploy Button, runs in a new thread.
         """
@@ -680,9 +685,6 @@ class MainUI():
                         if self.change_vlan_check.get():
                             # Get vlan new and old numbers from the user.
                             old_vlan = self.vlan_old_entry.get()
-                            # Change vlan 1 to 0.
-                            if int(old_vlan) <= 1:
-                                old_vlan = 0
                             new_vlan = self.vlan_new_entry.get()
 
                             # Loop through interfaces and get a list of interfaces with interfaces on VLAN1.
@@ -691,22 +693,69 @@ class MainUI():
                                 # Catch key errors for malformed interface output.
                                 try:
                                     # Check the interface vlan.
-                                    if interface["switchport access vlan"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Po" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                                    if interface["switchport access vlan"] == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
                                         interface_vlan_change_list.append(interface["name"])
-                                except KeyError:
-                                    self.logger.error(f"KeyError: An interface output for {device['hostname']} was not received properly, skipping...")
+                                except KeyError as error:
+                                    self.logger.error(f"KeyError ({error}): An interface output for {device['hostname']} was not received properly, skipping...")
 
                             # Check that we have at least 1 interface to change.
                             vlan_command_text = ""
                             if len(interface_vlan_change_list) > 0:
                                 # Append interfaces changed to output
                                 output += f"\n\n{interface_vlan_change_list}"
-                                # Build commands list for vlan change.
-                                vlan_command_text += "end\nconf t\nint range "
+
+                                # Convert the list into more compact ranges, CiscoIOS can only handle 5-8 ranges.
+                                interface_port_types = {}
                                 for interface in interface_vlan_change_list:
-                                    vlan_command_text += interface + ", "
-                                vlan_command_text = vlan_command_text[:-2] + "\n"
-                                vlan_command_text += f"sw acc vlan {new_vlan}\nend\n"
+                                    # Cutoff first two or three letters of interface and add key to dictionary if it doesn't exist. If it doesn exist, then append it to the list in the dictionary.
+                                    key = re.split("/", interface[::-1], 1)[-1][::-1]
+                                    if key not in interface_port_types.keys():
+                                        interface_port_types[key] = [re.split("/|Po", interface)[-1]]
+                                    else:
+                                        interface_port_types[key].append(re.split("/|Po", interface)[-1])
+
+                                # Group the interfaces together to be more efficient.
+                                vlan_command_text = "end\nconf t\n"
+                                interface_ranges = ""
+                                range_counter = 0
+                                for key in interface_port_types.keys():
+                                    # Get the interface list.
+                                    interface_numbers = interface_port_types[key]
+                                    interface_numbers = list(map(int, interface_numbers))
+                                    # Group numbers.
+                                    interface_numbers = list(self.find_ranges(interface_numbers))
+                                    # Parse command text.
+                                    for range in interface_numbers:
+                                        # Check if we have hit five ranges.
+                                        if range_counter >= 5:
+                                            # Remove last comma and space from interface range text.
+                                            interface_ranges = interface_ranges[:-2]
+                                            # Build commands list for vlan change.
+                                            vlan_command_text += f"int range {interface_ranges}\n"
+                                            vlan_command_text += f"sw acc vlan {new_vlan}\n"
+                                            # Clear interface_range text and reset counter.
+                                            interface_ranges = ""
+                                            range_counter = 0
+
+                                        # Lookout for port channel interfaces.
+                                        if "Po" in key:
+                                            interface_ranges += f"{key}, "
+                                        # Check if the current range is a tuple or a single integer.
+                                        elif isinstance(range, tuple):
+                                            interface_ranges += f"{key}/{range[0]}-{range[1]}, "
+                                        else:
+                                            interface_ranges += f"{key}/{range}, "
+                                        
+                                        # Increment counter.
+                                        range_counter += 1
+                                
+                                # Remove last comma and space from interface range text.
+                                interface_ranges = interface_ranges[:-2]
+                                # Build commands list for vlan change.
+                                vlan_command_text += f"int range {interface_ranges}\n"
+                                vlan_command_text += f"sw acc vlan {new_vlan}\n"
+                                # Add end to exit global config mode.
+                                vlan_command_text += "end\n"
 
                             # Run the commands on the switch and show output, then ask the user if the output looks good.
                             output += "\n\n"
@@ -723,13 +772,15 @@ class MainUI():
                         # Show the output to the user and ask if it is correct.
                         text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
                         # Write output to a file.
-                        with open(f"deploy_outputs/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
+                        with open(f"{directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
                             for line in output:
                                 file.write(line)
-                        # Ask the user if the output is correct.
+                        # # Ask the user if the output is correct.
                         correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                        # Ask the user if they want to continue.
+                        # # Ask the user if they want to continue.
                         continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
+                        # correct_output = True
+                        # continue_deploy = True
 
                         # If the output was incorrect add the switch to a list.
                         if not correct_output:
@@ -977,3 +1028,23 @@ class MainUI():
             Nothing
         """
         return self.window_is_open
+
+    def find_ranges(self, iterable):
+        """
+        Turns [1,2,3,4,5,6,10] into [(1,6), 10]. This function uses the 'yield' keyword to be
+        memory efficient and because it returns an iterable object.
+
+        Parameters:
+        -----------
+            iterable - An iterable object
+
+        Returns:
+        --------
+            list - A list of integers and tuples that represent the compressed version of the input.
+        """
+        for group in mit.consecutive_groups(iterable):
+            group = list(group)
+            if len(group) == 1:
+                yield group[0]
+            else:
+                yield group[0], group[-1]

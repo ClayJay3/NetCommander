@@ -8,7 +8,11 @@ This program was originally created to aid in running a relatively small set of 
 ```diff
 -RUN WITH CAUTION. YOU CAN EASILY MESS UP MULTIPLE SWITCH CONFIGS WITH THIS PROGRAM.-
 ```
-![Inkedtest](https://user-images.githubusercontent.com/26121134/191029798-073cc334-44a5-4b32-a86b-76d900a61800.jpg)
+The commands are ran on the switches selected by the user in order of 'hop' distance, starting from the furthest switch out. All program and switch console outputs are saved to timestamped log files in the program's directory.
+![tempsnip](https://user-images.githubusercontent.com/26121134/199790942-d48e6570-5b31-40e9-9af9-e9d89e0efa27.png)
+
+During automatic switch discovery, the program generates a topology layout of the network to help the user decided what switches they want the commands to run on.
+![graph](https://user-images.githubusercontent.com/26121134/199791146-60a1784e-6fbc-44f9-a4ce-1f64dd3c3e87.PNG)
 
 
 ## Install

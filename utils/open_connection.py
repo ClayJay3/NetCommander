@@ -179,7 +179,8 @@ def ssh_autodetect_switchlist_info(usernames, passwords, enable_secrets, enable_
 
 def ssh_telnet(device, enable_telnet, force_telnet, store_config_info=False) -> netmiko.ssh_dispatcher:
     """
-    This method uses the given ip to open a new ssh connetion.
+    This method uses the given ip to open a new ssh connetion. It also grabs and stores interface, vlan, and config data
+    about the device and stores it in the device dictionary.
 
     Parameters:
     -----------
@@ -341,12 +342,25 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                 for line in int_output:
                     # Split line by spaces.
                     line = re.split(" +", line)
-                    # Check if the last element contains just SFP. If so, then join the last two elements together.
-                    if line[-1] == "SFP" or line[-1] == "Present":
-                        # Get the last two elements and add them together.
-                        new_type = line.pop(-2) + " " + line.pop(-1)
+                    # Check if the second to last element contains just CSR4. If so, then join the last two elements together.
+                    if line[-2] == "CSR4":
+                    # Get the last two elements and add them together.
+                        new_type = f"{line.pop(-4)} {line.pop(-3)} {line.pop(-2)} {line.pop(-1)}"
                         # Reappend to line.
                         line.append(new_type)
+                    # Check if the last element contains just SFP. If so, then join the last two elements together.
+                    elif line[-1] == "SFP" or line[-1] == "Present":
+                        # Get the last two elements and add them together.
+                        new_type = f"{line.pop(-2)} {line.pop(-1)}"
+                        # Reappend to line.
+                        line.append(new_type)
+                    # Check if the last element contains CU1M. If so, then join the last three elements together.
+                    elif line[-1] == "CU1M":
+                        # Get the last three elements and add them together.
+                        new_type = f"{line.pop(-3)} {line.pop(-2)} {line.pop(-1)}"
+                        # Reappend to line.
+                        line.append(new_type)
+
                     # If the array is greater than a certain length, then the desc must have spaces.
                     if len(line) > 7:
                         # Break data back apart to isolate desc.
@@ -357,24 +371,15 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                         # Rebuild line.
                         line = first_data + inbetween + last_data
                     # If the array is less than a certain length, then the desc must be empty.
-                    if len(line) < 7:
-                        # Check if the interface is a port channel.
-                        if "Po" not in line[0]:
-                            # Break data back apart to isolate desc.
-                            last_data = line[-5:]
-                            first_data = [line[0]]
-                            # Join desc back into a single string.
-                            inbetween = [""]
-                            # Rebuild line.
-                            line = first_data + inbetween + last_data
-                        else:
-                            # Break data back apart to isolate desc.
-                            last_data = line[-4:]
-                            first_data = [line[0]]
-                            # Join desc back into a single string.
-                            inbetween = [""]
-                            # Rebuild line.
-                            line = first_data + inbetween + last_data + [""]
+                    elif len(line) < 7:
+                        # Break data back apart to isolate desc.
+                        last_data = line[-5:]
+                        first_data = [line[0]]
+                        # Join desc back into a single string.
+                        inbetween = [""]
+                        # Rebuild line.
+                        line = first_data + inbetween + last_data
+                        
                     # Match/zip values into a dictionary with the keys being the labels from the first line.
                     interface_details.append(dict(zip(data_keys, line)))
 
@@ -395,17 +400,22 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                         block = block[1:]
                         # split block up by new lines.
                         block = block.splitlines()
+                        # Loop through the block and remove trailing and leading spaces for each line.
+                        new_block = []
+                        for line in block:
+                            new_block.append(line.strip())
                         # Append to list.
-                        interface_blocks.append(block)
-                
+                        interface_blocks.append(new_block)
+
                 # Loop through the interfaces and blocks and match them by name.
                 for interface in interfaces:
                     for interface_data in interface_blocks:
                         # Get interface name.
                         name_data = re.split(" +", interface_data[0])[1]
-                        block_name = name_data[:2] + name_data.translate(str.maketrans('', '', string.ascii_letters + "-"))
+                        block_name_two_letter = name_data[:2] + name_data.translate(str.maketrans('', '', string.ascii_letters + "-")).strip()
+                        block_name_three_letter = name_data[:3] + name_data.translate(str.maketrans('', '', string.ascii_letters + "-")).strip()
                         # Check if names are equal.
-                        if interface["name"] == block_name:
+                        if interface["name"] == block_name_two_letter or interface["name"] == block_name_three_letter:
                             # Add relevant info to the interface using the interface_data list.
                             description = ""
                             shutdown = False
@@ -413,7 +423,7 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                             switch_mode_trunk = False
                             spanning_tree_portfast = False
                             spanning_tree_bpduguard = False
-                            switch_access_vlan = 0
+                            switch_access_vlan = 1
                             switch_voice_vlan = 0
                             switch_trunk_vlan = 0
 
