@@ -485,14 +485,6 @@ class MainUI():
                             # Purple.
                             colors.append("#9f3dae")
 
-                # Create a lamba function to generate random hex color codes.
-                # gen_rand_hex = lambda: random.randint(0,255)
-                # Add the nodes to the network graph.
-                # graph_net.add_nodes(list(range(len(filtered_export_info))),
-                #                 value=name_weights,
-                #                 title=[str(info) for info in filtered_export_info],
-                #                 label=[info["hostname"] for info in filtered_export_info],
-                #                 color=["#%02X%02X%02X" % (gen_rand_hex(), gen_rand_hex(), gen_rand_hex()) for i in range(len(filtered_export_info))])
                 # Add the nodes to the network diagram.
                 graph_net.add_nodes(list(range(len(filtered_export_info))),
                             value=name_weights,
@@ -693,7 +685,7 @@ class MainUI():
                                 # Catch key errors for malformed interface output.
                                 try:
                                     # Check the interface vlan.
-                                    if interface["switchport access vlan"] == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                                    if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
                                         interface_vlan_change_list.append(interface["name"])
                                 except KeyError as error:
                                     self.logger.error(f"KeyError ({error}): An interface output for {device['hostname']} was not received properly, skipping...")
@@ -775,9 +767,9 @@ class MainUI():
                         with open(f"{directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
                             for line in output:
                                 file.write(line)
-                        # # Ask the user if the output is correct.
+                        # Ask the user if the output is correct.
                         correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                        # # Ask the user if they want to continue.
+                        # Ask the user if they want to continue.
                         continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
                         # correct_output = True
                         # continue_deploy = True
