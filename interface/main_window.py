@@ -652,106 +652,19 @@ class MainUI():
             ssh_device = ssh_autodetect_info(usernames, passwords, enable_secrets, enable_telnet, force_telnet, device["ip_addr"])
             connection = ssh_telnet(ssh_device, enable_telnet, force_telnet, store_config_info=True)
             
-            # Check if device connection was successful.
-            if connection is not None and connection.is_alive():
-                # Check the privilege level of our connection. Must be 15 to execute all commands.
-                if "15" in connection.send_command("show privilege"):
-                    # Check if commands are empty.
-                    if len(command_text) > 1:
-                        # Print log.
-                        self.logger.info(f"Connected to device {device['ip_addr']}. Running commands...")
+            try:
+                # Check if device connection was successful.
+                if connection is not None and connection.is_alive():
+                    # Check the privilege level of our connection. Must be 15 to execute all commands.
+                    if "15" in connection.send_command("show privilege"):
+                        # Check if commands are empty.
+                        if len(command_text) > 1:
+                            # Print log.
+                            self.logger.info(f"Connected to device {device['ip_addr']}. Running commands...")
 
-                        output = ""
-                        # Run the commands on the switch and show output, then ask the user if the output looks good.
-                        for line in command_text.splitlines():
-                            # Catch timeouts.
-                            try:
-                                # Send the current command to the switch.
-                                output += f"\n{connection.find_prompt()}{line}\n"
-                                output += connection.send_command(line, expect_string="#")
-                            except ReadTimeout:
-                                self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
-                                messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
-
-                        # Check if the user have enabled vlan changing.
-                        if self.change_vlan_check.get():
-                            # Get vlan new and old numbers from the user.
-                            old_vlan = self.vlan_old_entry.get()
-                            new_vlan = self.vlan_new_entry.get()
-
-                            # Loop through interfaces and get a list of interfaces with interfaces on VLAN1.
-                            interface_vlan_change_list = []
-                            for interface in ssh_device["interfaces"]:
-                                # Catch key errors for malformed interface output.
-                                try:
-                                    # Check the interface vlan.
-                                    if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
-                                        interface_vlan_change_list.append(interface["name"])
-                                except KeyError as error:
-                                    self.logger.error(f"KeyError ({error}): An interface output for {device['hostname']} was not received properly, skipping...")
-
-                            # Check that we have at least 1 interface to change.
-                            vlan_command_text = ""
-                            if len(interface_vlan_change_list) > 0:
-                                # Append interfaces changed to output
-                                output += f"\n\n{interface_vlan_change_list}"
-
-                                # Convert the list into more compact ranges, CiscoIOS can only handle 5-8 ranges.
-                                interface_port_types = {}
-                                for interface in interface_vlan_change_list:
-                                    # Cutoff first two or three letters of interface and add key to dictionary if it doesn't exist. If it doesn exist, then append it to the list in the dictionary.
-                                    key = re.split("/", interface[::-1], 1)[-1][::-1]
-                                    if key not in interface_port_types.keys():
-                                        interface_port_types[key] = [re.split("/|Po", interface)[-1]]
-                                    else:
-                                        interface_port_types[key].append(re.split("/|Po", interface)[-1])
-
-                                # Group the interfaces together to be more efficient.
-                                vlan_command_text = "end\nconf t\n"
-                                interface_ranges = ""
-                                range_counter = 0
-                                for key in interface_port_types.keys():
-                                    # Get the interface list.
-                                    interface_numbers = interface_port_types[key]
-                                    interface_numbers = list(map(int, interface_numbers))
-                                    # Group numbers.
-                                    interface_numbers = list(self.find_ranges(interface_numbers))
-                                    # Parse command text.
-                                    for range in interface_numbers:
-                                        # Check if we have hit five ranges.
-                                        if range_counter >= 5:
-                                            # Remove last comma and space from interface range text.
-                                            interface_ranges = interface_ranges[:-2]
-                                            # Build commands list for vlan change.
-                                            vlan_command_text += f"int range {interface_ranges}\n"
-                                            vlan_command_text += f"sw acc vlan {new_vlan}\n"
-                                            # Clear interface_range text and reset counter.
-                                            interface_ranges = ""
-                                            range_counter = 0
-
-                                        # Lookout for port channel interfaces.
-                                        if "Po" in key:
-                                            interface_ranges += f"{key}, "
-                                        # Check if the current range is a tuple or a single integer.
-                                        elif isinstance(range, tuple):
-                                            interface_ranges += f"{key}/{range[0]}-{range[1]}, "
-                                        else:
-                                            interface_ranges += f"{key}/{range}, "
-                                        
-                                        # Increment counter.
-                                        range_counter += 1
-                                
-                                # Remove last comma and space from interface range text.
-                                interface_ranges = interface_ranges[:-2]
-                                # Build commands list for vlan change.
-                                vlan_command_text += f"int range {interface_ranges}\n"
-                                vlan_command_text += f"sw acc vlan {new_vlan}\n"
-                                # Add end to exit global config mode.
-                                vlan_command_text += "end\n"
-
+                            output = ""
                             # Run the commands on the switch and show output, then ask the user if the output looks good.
-                            output += "\n\n"
-                            for line in vlan_command_text.splitlines():
+                            for line in command_text.splitlines():
                                 # Catch timeouts.
                                 try:
                                     # Send the current command to the switch.
@@ -761,58 +674,151 @@ class MainUI():
                                     self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                                     messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
 
-                        # Show the output to the user and ask if it is correct.
-                        text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
-                        # Write output to a file.
-                        with open(f"{directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
-                            for line in output:
-                                file.write(line)
-                        # Ask the user if the output is correct.
-                        correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                        # Ask the user if they want to continue.
-                        continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
-                        # correct_output = True
-                        # continue_deploy = True
+                            # Check if the user have enabled vlan changing.
+                            if self.change_vlan_check.get():
+                                # Get vlan new and old numbers from the user.
+                                old_vlan = self.vlan_old_entry.get()
+                                new_vlan = self.vlan_new_entry.get()
 
-                        # If the output was incorrect add the switch to a list.
-                        if not correct_output:
-                            bad_deploys.append(device)
-                        # If the user doesn't want to continue the deploy then stop looping.
-                        if not continue_deploy:
-                            # Print log.
-                            self.logger.info("The deploy has been canceled by the user.")
+                                # Loop through interfaces and get a list of interfaces with interfaces on VLAN1.
+                                interface_vlan_change_list = []
+                                for interface in ssh_device["interfaces"]:
+                                    # Catch key errors for malformed interface output.
+                                    try:
+                                        # Check the interface vlan.
+                                        if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Fa" not in interface["name"] and "Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                                            interface_vlan_change_list.append(interface["name"])
+                                    except KeyError as error:
+                                        self.logger.error(f"KeyError ({error}): An interface output for {device['hostname']} was not received properly, skipping...")
+
+                                # Check that we have at least 1 interface to change.
+                                vlan_command_text = ""
+                                if len(interface_vlan_change_list) > 0:
+                                    # Append interfaces changed to output
+                                    output += f"\n\n{interface_vlan_change_list}"
+
+                                    # Convert the list into more compact ranges, CiscoIOS can only handle 5-8 ranges.
+                                    interface_port_types = {}
+                                    for interface in interface_vlan_change_list:
+                                        # Cutoff first two or three letters of interface and add key to dictionary if it doesn't exist. If it doesn exist, then append it to the list in the dictionary.
+                                        key = re.split("/", interface[::-1], 1)[-1][::-1]
+                                        if key not in interface_port_types.keys():
+                                            interface_port_types[key] = [re.split("/|Po", interface)[-1]]
+                                        else:
+                                            interface_port_types[key].append(re.split("/|Po", interface)[-1])
+
+                                    # Group the interfaces together to be more efficient.
+                                    vlan_command_text = "end\nconf t\n"
+                                    interface_ranges = ""
+                                    range_counter = 0
+                                    for key in interface_port_types.keys():
+                                        # Get the interface list.
+                                        interface_numbers = interface_port_types[key]
+                                        interface_numbers = list(map(int, interface_numbers))
+                                        # Group numbers.
+                                        interface_numbers = list(self.find_ranges(interface_numbers))
+                                        # Parse command text.
+                                        for range in interface_numbers:
+                                            # Check if we have hit five ranges.
+                                            if range_counter >= 5:
+                                                # Remove last comma and space from interface range text.
+                                                interface_ranges = interface_ranges[:-2]
+                                                # Build commands list for vlan change.
+                                                vlan_command_text += f"int range {interface_ranges}\n"
+                                                vlan_command_text += f"sw acc vlan {new_vlan}\n"
+                                                # Clear interface_range text and reset counter.
+                                                interface_ranges = ""
+                                                range_counter = 0
+
+                                            # Lookout for port channel interfaces.
+                                            if "Po" in key:
+                                                interface_ranges += f"{key}, "
+                                            # Check if the current range is a tuple or a single integer.
+                                            elif isinstance(range, tuple):
+                                                interface_ranges += f"{key}/{range[0]}-{range[1]}, "
+                                            else:
+                                                interface_ranges += f"{key}/{range}, "
+                                            
+                                            # Increment counter.
+                                            range_counter += 1
+                                    
+                                    # Remove last comma and space from interface range text.
+                                    interface_ranges = interface_ranges[:-2]
+                                    # Build commands list for vlan change.
+                                    vlan_command_text += f"int range {interface_ranges}\n"
+                                    vlan_command_text += f"sw acc vlan {new_vlan}\n"
+                                    # Add end to exit global config mode.
+                                    vlan_command_text += "end\n"
+
+                                # Run the commands on the switch and show output, then ask the user if the output looks good.
+                                output += "\n\n"
+                                for line in vlan_command_text.splitlines():
+                                    # Catch timeouts.
+                                    try:
+                                        # Send the current command to the switch.
+                                        output += f"\n{connection.find_prompt()}{line}\n"
+                                        output += connection.send_command(line, expect_string="#")
+                                    except ReadTimeout:
+                                        self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
+                                        messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+
+                            # Show the output to the user and ask if it is correct.
+                            text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
+                            # Write output to a file.
+                            with open(f"{directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
+                                for line in output:
+                                    file.write(line)
+                            # Ask the user if the output is correct.
+                            # correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                            # Ask the user if they want to continue.
+                            # continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
+                            correct_output = True
+                            continue_deploy = True
+
+                            # If the output was incorrect add the switch to a list.
+                            if not correct_output:
+                                bad_deploys.append(device)
+                            # If the user doesn't want to continue the deploy then stop looping.
+                            if not continue_deploy:
+                                # Print log.
+                                self.logger.info("The deploy has been canceled by the user.")
+                                # Disconnection from the current device.
+                                connection.disconnect()
+                                # Exit for loop.
+                                break
+                        else:
+                            # Print log and show messagebox to user.
+                            self.logger.info("Command textbox is empty!")
+                            messagebox.showwarning(message="Command textbox is empty!")
+                            # Store all device in the bad deploy list.
+                            bad_deploys = devices
                             # Disconnection from the current device.
                             connection.disconnect()
                             # Exit for loop.
                             break
                     else:
-                        # Print log and show messagebox to user.
-                        self.logger.info("Command textbox is empty!")
-                        messagebox.showwarning(message="Command textbox is empty!")
-                        # Store all device in the bad deploy list.
-                        bad_deploys = devices
-                        # Disconnection from the current device.
-                        connection.disconnect()
-                        # Exit for loop.
-                        break
+                        # Print log and show messagebox.
+                        self.logger.error(f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. Skipping and adding to bad deploy list...")
+                        messagebox.showerror(message=f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. The device will be skipped and marked as a bad deploy.")
+                        # Append current device to bad deploy list.
+                        bad_deploys.append(device)
+
+                    # Disconnection from device.
+                    connection.disconnect()
                 else:
                     # Print log and show messagebox.
-                    self.logger.error(f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. Skipping and adding to bad deploy list...")
-                    messagebox.showerror(message=f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. The device will be skipped and marked as a bad deploy.")
+                    self.logger.error(f"Failed to connection to {device['ip_addr']}")
+                    messagebox.showerror(message=f"Couldn't connect to {device['ip_addr']}. Moving on to next device.")
                     # Append current device to bad deploy list.
                     bad_deploys.append(device)
 
-                # Disconnection from device.
-                connection.disconnect()
-            else:
-                # Print log and show messagebox.
-                self.logger.error(f"Failed to connection to {device['ip_addr']}")
-                messagebox.showerror(message=f"Couldn't connect to {device['ip_addr']}. Moving on to next device.")
+                # Update main window.
+                self.window.update()
+            except OSError:
+                self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
+                messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
                 # Append current device to bad deploy list.
                 bad_deploys.append(device)
-
-            # Update main window.
-            self.window.update()
 
         # Print bad deploy devices to logs.
         self.logger.info(f"Unable to fully deploy commands to these devices: {bad_deploys}")
