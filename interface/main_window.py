@@ -98,6 +98,7 @@ class MainUI():
         # Create checkbox variables.
         self.enable_telnet_check = tk.BooleanVar(self.window)
         self.change_vlan_check = tk.BooleanVar(self.window)
+        self.turbo_deploy_check = tk.BooleanVar(self.window)
         self.force_telnet_check = tk.BooleanVar(self.window)
 
         # Setup window grid layout.
@@ -231,6 +232,10 @@ class MainUI():
         vlan_change_text.grid(row=1, column=3, columnspan=1, sticky=tk.W)
         self.vlan_new_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (str.isdigit(input) or input == "") else False), "%P"))
         self.vlan_new_entry.grid(row=1, column=4, sticky=tk.W)
+        enable_turbo_deploy_checkbox = tk.Checkbutton(master=options_frame, variable=self.turbo_deploy_check, onvalue=True, offvalue=False)
+        enable_turbo_deploy_checkbox.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        vlan_change_text = tk.Label(master=options_frame, text="Enable Turbo Deploy? (WARNING: Doesn't ask user for confirmation)", font=(self.font, 10))
+        vlan_change_text.grid(row=2, column=1, columnspan=5, sticky=tk.W)
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -768,12 +773,16 @@ class MainUI():
                             with open(f"{directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
                                 for line in output:
                                     file.write(line)
-                            # Ask the user if the output is correct.
-                            # correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                            # Ask the user if they want to continue.
-                            # continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
-                            correct_output = True
-                            continue_deploy = True
+
+                            # Check if turbo deploy is enabled.
+                            if self.turbo_deploy_check.get():
+                                correct_output = True
+                                continue_deploy = True
+                            else:
+                                # Ask the user if the output is correct.
+                                correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                                # Ask the user if they want to continue.
+                                continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
                             # If the output was incorrect add the switch to a list.
                             if not correct_output:
