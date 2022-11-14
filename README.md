@@ -21,6 +21,7 @@ This python program has been compiled with pyinstaller, which turns python code 
       - onefile.zip offers a more simplistic application executable, but runs at a slower speed. This is because the whole application and its dependencies are compiled
         into a single file.
       - onefolder.zip offers faster execution, but the application directory is more cluttered.
+      - The installer.exe is just easy and simple. Compiled with InnoSetupCreator
   2) Copy a shortcut to the desktop and open the program.
   
   OR download and install the setup .exe file.
