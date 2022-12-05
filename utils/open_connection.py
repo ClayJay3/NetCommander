@@ -343,7 +343,7 @@ def get_config_info(connection) -> netmiko.ssh_dispatcher:
                     # Split line by spaces.
                     line = re.split(" +", line)
                     # Check if the second to last element contains just CSR4. If so, then join the last two elements together.
-                    if line[-2] == "CSR4":
+                    if "SR4" in line[-2]:
                     # Get the last two elements and add them together.
                         new_type = f"{line.pop(-4)} {line.pop(-3)} {line.pop(-2)} {line.pop(-1)}"
                         # Reappend to line.

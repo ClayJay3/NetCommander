@@ -11,7 +11,7 @@ from tkinter import messagebox
 from tkinter import font
 from netmiko.exceptions import ReadTimeout
 from interface.popup_window import text_popup
-from utils.deploy_options import change_access_port_vlans
+from utils.deploy_options import change_access_port_vlans, setup_dhcp_snooping_on_trunks, setup_dynamic_arp_inspection_on_trunks
 from pyvis.network import Network
 
 from utils.open_connection import ssh_autodetect_info, ssh_telnet
@@ -45,19 +45,6 @@ class MainUI():
         self.selection_devices_list = []
         self.already_auto_discovering = False
         self.export_permission_error = False
-        self.enable_telnet_check = None
-        self.change_vlan_check = None
-        self.force_telnet_check = None
-
-        # Create UI components.
-        self.window = None
-        self.command_textbox = None
-        self.tree_view_frame = None
-        self.tree_canvas = None
-        self.closest_hop_entry = None
-        self.vlan_old_entry = None
-        self.vlan_new_entry = None
-        self.vlan_entries_state_enabled = True
 
         # Open log file for displaying in console window.
         self.log_file = open("logs/latest.log", "r", encoding="utf-8")
@@ -85,6 +72,24 @@ class MainUI():
         """
         self.logger.info("Initializing main window...")
 
+        # Create UI component variables.
+        self.window = None
+        self.command_textbox = None
+        self.tree_view_frame = None
+        self.tree_canvas = None
+        self.closest_hop_entry = None
+        self.enable_telnet_check = None
+        self.change_vlan_check = None
+        self.force_telnet_check = None
+        self.vlan_old_entry = None
+        self.vlan_new_entry = None
+        self.vlan_entries_state_enabled = True
+        self.dhcp_snoop_vlan_entry = None
+        self.disable_dhcp_snooping_option82_checkbox = None
+        self.dhcp_snoop_vlan_entry_state_enabled = True
+        self.arp_inspection_vlan_entry = None
+        self.enable_arp_inspection_checkbox = None
+        self.arp_inspection_vlan_entry_state_enabled = True
         # Create new tk window.
         self.window = tk.Tk()
         # Set window closing actions.
@@ -95,11 +100,15 @@ class MainUI():
         self.window.attributes("-topmost", True)
         self.window.update()
         self.window.attributes("-topmost", False)
+
         # Create checkbox variables.
         self.enable_telnet_check = tk.BooleanVar(self.window)
         self.change_vlan_check = tk.BooleanVar(self.window)
         self.turbo_deploy_check = tk.BooleanVar(self.window)
         self.force_telnet_check = tk.BooleanVar(self.window)
+        self.dhcp_snooping_check = tk.BooleanVar(self.window)
+        self.dhcp_snooping_option82_check = tk.BooleanVar(self.window, True)
+        self.arp_inspection_check = tk.BooleanVar(self.window)
 
         # Setup window grid layout.
         self.window.rowconfigure(self.grid_size, weight=1, minsize=50)
@@ -236,6 +245,24 @@ class MainUI():
         enable_turbo_deploy_checkbox.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.E)
         vlan_change_text = tk.Label(master=options_frame, text="Enable Turbo Deploy? (WARNING: Doesn't ask user for confirmation)", font=(self.font, 10))
         vlan_change_text.grid(row=2, column=1, columnspan=5, sticky=tk.W)
+        enable_dhcp_snooping_checkbox = tk.Checkbutton(master=options_frame, variable=self.dhcp_snooping_check, onvalue=True, offvalue=False)
+        enable_dhcp_snooping_checkbox.grid(row=3, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        dhcp_vlan_text = tk.Label(master=options_frame, text="Enable DHCP Snooping on vlans", font=(self.font, 10))
+        dhcp_vlan_text.grid(row=3, column=1, columnspan=2, sticky=tk.W)
+        self.dhcp_snoop_vlan_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
+        self.dhcp_snoop_vlan_entry.grid(row=3, column=3, sticky=tk.W)
+        self.dhcp_snoop_vlan_entry.insert(0, "1,2-4,5")
+        self.disable_dhcp_snooping_option82_checkbox = tk.Checkbutton(master=options_frame, variable=self.dhcp_snooping_option82_check, onvalue=True, offvalue=False)
+        self.disable_dhcp_snooping_option82_checkbox.grid(row=4, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        dhcp_option82_text = tk.Label(master=options_frame, text="Disable option82 injection. (Improves compatibility with DCHP servers)", font=(self.font, 10))
+        dhcp_option82_text.grid(row=4, column=1, columnspan=4, sticky=tk.W)
+        self.enable_arp_inspection_checkbox = tk.Checkbutton(master=options_frame, variable=self.arp_inspection_check, onvalue=True, offvalue=False)
+        self.enable_arp_inspection_checkbox.grid(row=5, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        arp_vlan_text = tk.Label(master=options_frame, text="Enable ARP inspection on vlans", font=(self.font, 10))
+        arp_vlan_text.grid(row=5, column=1, columnspan=2, sticky=tk.W)
+        self.arp_inspection_vlan_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
+        self.arp_inspection_vlan_entry.grid(row=5, column=3, sticky=tk.W)
+        self.arp_inspection_vlan_entry.insert(0, "1,2-4,5")
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -612,10 +639,26 @@ class MainUI():
                 # Print log and show messagebox.
                 self.logger.warning("Can't start deploy because no vlans have been entered to change! If you don't want to enter vlans, then uncheck the box in the options pane.")
                 messagebox.showwarning(message="Can't start deploy because the user didn't specify old and new vlans even though the checkbox was ticked.")
+            elif self.dhcp_snooping_check.get() and len(self.dhcp_snoop_vlan_entry.get()) <= 0:
+                # Print log and show messagebox.
+                self.logger.warning("Can't start deploy because no vlans have been entered to snoop on!")
+                messagebox.showwarning(message="Can't start deploy because no vlans have been entered to snoop on! You must enter vlans like: 1,2-3,4")
+                if self.arp_inspection_check.get() and len(self.arp_inspection_vlan_entry.get()) <= 0:
+                    # Print log and show messagebox.
+                    self.logger.warning("Can't start deploy because no vlans have been entered to do arp inspection on!")
+                    messagebox.showwarning(message="Can't start deploy because no vlans have been entered to do arp inspection on! You must enter vlans like: 1,2-3,4")
             else:
                 # Before starting threads, ask user if they are sure they want to continue.
                 self.logger.info("Asking user if they are sure they want to start the deploy process...")
                 user_result = messagebox.askyesno(title="ATTENTION!", message="Are you sure you want to start the deploy process? This will make changes to the devices!")
+                # Display warning messages about DHCP Snooping.
+                if self.dhcp_snooping_check.get() and user_result:
+                    self.logger.warning("Asking user if they are ABSOLUTELY SURE they want to enable DHCP snooping on switches...")
+                    user_result = messagebox.askyesno(message="WARNING!!! By enabling DHCP snooping all dhcp offers from non-trunk ports will be blocked. After enabling this feature, you must manually log into the switch connected to your DHCP server and run 'ip dhcp snooping trust' on the switchport interface. If you don't, then no hosts will be able to receive a new DHCP address! ARE YOU ABSOLUTELY SURE YOU WANT TO CONTINUE?")
+                    if self.arp_inspection_check.get() and user_result:
+                        self.logger.warning("Asking user if they are ABSOLUTELY SURE they want to enable ARP inspection on switches...")
+                        user_result = messagebox.askyesno(message="WARNING!!! By enabling ARP snooping all non DHCP devices will be blocked from connecting to the network! After enabling this feature, you must manually log into EVERY SWITCH and run 'ip arp inspections trust' on the ports you trust or add a manual binding in the 'ip source' table. If you don't, then any hosts with a static IP will not be able to join the network! ARE YOU ABSOLUTELY SURE YOU WANT TO CONTINUE?")
+
                 # Check user choice.
                 if user_result:
                     # Print log.
@@ -679,7 +722,7 @@ class MainUI():
                                     self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                                     messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
 
-                            # Check if the user have enabled vlan changing.
+                            # Check if the user has enabled vlan changing.
                             if self.change_vlan_check.get():
                                 # Get vlan new and old numbers from the user.
                                 vlan_command_text = change_access_port_vlans(self.vlan_old_entry.get(), self.vlan_new_entry.get(), ssh_device)                                
@@ -695,6 +738,49 @@ class MainUI():
                                     except ReadTimeout:
                                         self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                                         messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+
+                                # Append some newlines to the output to keep it pretty.
+                                output += "\n\n"
+
+                            # Check if the user has enabled DHCP snooping option.
+                            if self.dhcp_snooping_check.get():
+                                # Get vlan new and old numbers from the user.
+                                vlan_command_text = setup_dhcp_snooping_on_trunks(ssh_device, self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get())                                
+
+                                # Run the commands on the switch and show output, then ask the user if the output looks good.
+                                output += "\n\n"
+                                for line in vlan_command_text.splitlines():
+                                    # Catch timeouts.
+                                    try:
+                                        # Send the current command to the switch.
+                                        output += f"\n{connection.find_prompt()}{line}\n"
+                                        output += connection.send_command(line, expect_string="#")
+                                    except ReadTimeout:
+                                        self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
+                                        messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+                            
+                                # Append some newlines to the output to keep it pretty.
+                                output += "\n\n"
+
+                                # Check if the user has enabled ARP inspection option.
+                                if self.arp_inspection_check.get():
+                                    # Get vlan new and old numbers from the user.
+                                    vlan_command_text = setup_dynamic_arp_inspection_on_trunks(ssh_device, self.arp_inspection_vlan_entry.get())                                
+
+                                    # Run the commands on the switch and show output, then ask the user if the output looks good.
+                                    output += "\n\n"
+                                    for line in vlan_command_text.splitlines():
+                                        # Catch timeouts.
+                                        try:
+                                            # Send the current command to the switch.
+                                            output += f"\n{connection.find_prompt()}{line}\n"
+                                            output += connection.send_command(line, expect_string="#")
+                                        except ReadTimeout:
+                                            self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
+                                            messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+
+                                    # Append some newlines to the output to keep it pretty.
+                                    output += "\n\n"
 
                             # Show the output to the user and ask if it is correct.
                             text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
@@ -815,7 +901,10 @@ class MainUI():
         else:
             self.list.insert(0, line)
 
+        #######################################################################
         # Update options entries and checkboxes.
+        #######################################################################
+        # Vlan change entries.
         if not self.change_vlan_check.get() and self.vlan_entries_state_enabled:
             # Disable elements.
             self.vlan_old_entry.configure(state="disable")
@@ -828,6 +917,36 @@ class MainUI():
             self.vlan_new_entry.configure(state="normal")
             # Update toggle var.
             self.vlan_entries_state_enabled = True
+        # DHCP entries and checkboxes.
+        if not self.dhcp_snooping_check.get() and self.dhcp_snoop_vlan_entry_state_enabled:
+            # Disable elements.
+            self.dhcp_snoop_vlan_entry.configure(state="disable")
+            self.disable_dhcp_snooping_option82_checkbox.configure(state="disable")
+            self.enable_arp_inspection_checkbox.configure(state="disable")
+            self.arp_inspection_vlan_entry.configure(state="disable")
+            # Update toggle var.
+            self.dhcp_snoop_vlan_entry_state_enabled = False
+        elif self.dhcp_snooping_check.get() and not self.dhcp_snoop_vlan_entry_state_enabled:
+            # Enable elements.
+            self.dhcp_snoop_vlan_entry.configure(state="normal")
+            self.disable_dhcp_snooping_option82_checkbox.configure(state="normal")
+            self.enable_arp_inspection_checkbox.configure(state="normal")
+            # Only enable this entry if the arp checkbox is also checked.
+            if self.arp_inspection_check.get():
+                self.arp_inspection_vlan_entry.configure(state="normal")
+            # Update toggle var.
+            self.dhcp_snoop_vlan_entry_state_enabled = True
+        # ARP entry.
+        if not self.arp_inspection_check.get() and self.arp_inspection_vlan_entry_state_enabled:
+            # Disable elements.
+            self.arp_inspection_vlan_entry.configure(state="disable")
+            # Update toggle var.
+            self.arp_inspection_vlan_entry_state_enabled = False
+        elif self.arp_inspection_check.get() and not self.arp_inspection_vlan_entry_state_enabled:
+            # Enable elements.
+            self.arp_inspection_vlan_entry.configure(state="normal")
+            # Update toggle var.
+            self.arp_inspection_vlan_entry_state_enabled = True
 
         # Update the textbox with the discovering list if it's not empty and not being updated.
         if len(self.discovery_list) > 0 and not self.already_auto_discovering:
