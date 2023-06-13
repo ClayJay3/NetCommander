@@ -11,7 +11,7 @@ from tkinter import messagebox
 from tkinter import font
 from netmiko.exceptions import ReadTimeout
 from interface.popup_window import text_popup
-from utils.deploy_options import change_access_port_vlans, setup_dhcp_snooping_on_trunks, setup_dynamic_arp_inspection_on_trunks
+from utils.deploy_options import change_port_vlans, setup_dhcp_snooping_on_trunks, setup_dynamic_arp_inspection_on_trunks
 from pyvis.network import Network
 
 from utils.open_connection import ssh_autodetect_info, ssh_telnet
@@ -80,6 +80,7 @@ class MainUI():
         self.closest_hop_entry = None
         self.enable_telnet_check = None
         self.change_vlan_check = None
+        self.toggle_voice_vlan_check = None
         self.force_telnet_check = None
         self.vlan_old_entry = None
         self.vlan_new_entry = None
@@ -104,6 +105,7 @@ class MainUI():
         # Create checkbox variables.
         self.enable_telnet_check = tk.BooleanVar(self.window)
         self.change_vlan_check = tk.BooleanVar(self.window)
+        self.toggle_voice_vlan_check = tk.BooleanVar(self.window)
         self.turbo_deploy_check = tk.BooleanVar(self.window)
         self.force_telnet_check = tk.BooleanVar(self.window)
         self.dhcp_snooping_check = tk.BooleanVar(self.window)
@@ -228,41 +230,63 @@ class MainUI():
         new_secret_entry.grid(row=5, column=9, sticky=tk.NSEW)
         self.secret_entrys.append(new_secret_entry)
 
+        #########################################################################################################
         # Populate option frame.
-        secret_label = tk.Label(master=options_frame, text="Options:", font=(self.font, 14))
-        secret_label.grid(row=0, column=0, columnspan=10, sticky=tk.NSEW)
-        enable_vlan_change_checkbox = tk.Checkbutton(master=options_frame, variable=self.change_vlan_check, onvalue=True, offvalue=False)
-        enable_vlan_change_checkbox.grid(row=1, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        vlan_change_text = tk.Label(master=options_frame, text="Change VLAN", font=(self.font, 10))
-        vlan_change_text.grid(row=1, column=1, columnspan=1, sticky=tk.W)
-        self.vlan_old_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if str.isdigit(input) or input == "" else False), "%P"))
-        self.vlan_old_entry.grid(row=1, column=2, sticky=tk.W)
-        vlan_change_text = tk.Label(master=options_frame, text=" access ports to VLAN", font=(self.font, 10))
-        vlan_change_text.grid(row=1, column=3, columnspan=1, sticky=tk.W)
-        self.vlan_new_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (str.isdigit(input) or input == "") else False), "%P"))
-        self.vlan_new_entry.grid(row=1, column=4, sticky=tk.W)
-        enable_turbo_deploy_checkbox = tk.Checkbutton(master=options_frame, variable=self.turbo_deploy_check, onvalue=True, offvalue=False)
-        enable_turbo_deploy_checkbox.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        vlan_change_text = tk.Label(master=options_frame, text="Enable Turbo Deploy? (WARNING: Doesn't ask user for confirmation)", font=(self.font, 10))
-        vlan_change_text.grid(row=2, column=1, columnspan=5, sticky=tk.W)
-        enable_dhcp_snooping_checkbox = tk.Checkbutton(master=options_frame, variable=self.dhcp_snooping_check, onvalue=True, offvalue=False)
-        enable_dhcp_snooping_checkbox.grid(row=3, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        dhcp_vlan_text = tk.Label(master=options_frame, text="Enable DHCP Snooping on vlans", font=(self.font, 10))
-        dhcp_vlan_text.grid(row=3, column=1, columnspan=2, sticky=tk.W)
-        self.dhcp_snoop_vlan_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
-        self.dhcp_snoop_vlan_entry.grid(row=3, column=3, sticky=tk.W)
+        #########################################################################################################
+        options_label = tk.Label(master=options_frame, text="Options:", font=(self.font, 14))
+        options_label.grid(row=0, column=0, columnspan=10, sticky=tk.NSEW)
+        #########################################################################################################
+        vlan_options_frame = tk.Frame(master=options_frame, relief=tk.GROOVE, borderwidth=2)   # Create frame from grouping vlan options.
+        vlan_options_frame.grid(row=1, rowspan=2, column=0, columnspan=5, sticky=tk.NSEW)
+        vlan_options_frame.rowconfigure(self.grid_size, weight=1)
+        vlan_options_frame.columnconfigure(self.grid_size, weight=1)
+        enable_vlan_change_checkbox = tk.Checkbutton(master=vlan_options_frame, variable=self.change_vlan_check, onvalue=True, offvalue=False)
+        enable_vlan_change_checkbox.grid(row=0, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        vlan_change_text = tk.Label(master=vlan_options_frame, text="Change VLAN", font=(self.font, 10))
+        vlan_change_text.grid(row=0, column=1, columnspan=1, sticky=tk.W)
+        self.vlan_old_entry = tk.Entry(master=vlan_options_frame, width=10, validate="all", validatecommand=(vlan_options_frame.register(lambda input:True if str.isdigit(input) or input == "" else False), "%P"))
+        self.vlan_old_entry.grid(row=0, column=2, sticky=tk.W)
+        vlan_change_text = tk.Label(master=vlan_options_frame, text=" access ports to VLAN", font=(self.font, 10))
+        vlan_change_text.grid(row=0, column=3, columnspan=1, sticky=tk.W)
+        self.vlan_new_entry = tk.Entry(master=vlan_options_frame, width=10, validate="all", validatecommand=(vlan_options_frame.register(lambda input:True if (str.isdigit(input) or input == "") else False), "%P"))
+        self.vlan_new_entry.grid(row=0, column=4, sticky=tk.W)
+        access_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change access VLANs", variable=self.toggle_voice_vlan_check, value=False)
+        access_vlan_radio_select.grid(row=1, column=0, columnspan=3, sticky=tk.W)
+        voice_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change voice VLANs", variable=self.toggle_voice_vlan_check, value=True)
+        voice_vlan_radio_select.grid(row=1, column=3, columnspan=3, sticky=tk.W)
+        #########################################################################################################
+        turbo_options_frame = tk.Frame(master=options_frame, relief=tk.GROOVE, borderwidth=2)   # Create frame from grouping turbo options.
+        turbo_options_frame.grid(row=3, rowspan=2, column=0, columnspan=5, sticky=tk.NSEW)
+        turbo_options_frame.rowconfigure(self.grid_size, weight=1)
+        turbo_options_frame.columnconfigure(self.grid_size, weight=1)
+        enable_turbo_deploy_checkbox = tk.Checkbutton(master=turbo_options_frame, variable=self.turbo_deploy_check, onvalue=True, offvalue=False)
+        enable_turbo_deploy_checkbox.grid(row=0, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        turbo_deploy_text = tk.Label(master=turbo_options_frame, text="Enable Turbo Deploy? (WARNING: Doesn't ask user for confirmation)", font=(self.font, 10))
+        turbo_deploy_text.grid(row=0, column=1, columnspan=5, sticky=tk.W)
+        #########################################################################################################
+        dhcp_arp_options_frame = tk.Frame(master=options_frame, relief=tk.GROOVE, borderwidth=2)   # Create frame from grouping turbo options.
+        dhcp_arp_options_frame.grid(row=5, rowspan=2, column=0, columnspan=5, sticky=tk.NSEW)
+        dhcp_arp_options_frame.rowconfigure(self.grid_size, weight=1)
+        dhcp_arp_options_frame.columnconfigure(self.grid_size, weight=1)
+        enable_dhcp_snooping_checkbox = tk.Checkbutton(master=dhcp_arp_options_frame, variable=self.dhcp_snooping_check, onvalue=True, offvalue=False)
+        enable_dhcp_snooping_checkbox.grid(row=0, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        dhcp_vlan_text = tk.Label(master=dhcp_arp_options_frame, text="Enable DHCP Snooping on vlans", font=(self.font, 10))
+        dhcp_vlan_text.grid(row=0, column=1, columnspan=2, sticky=tk.W)
+        self.dhcp_snoop_vlan_entry = tk.Entry(master=dhcp_arp_options_frame, width=10, validate="all", validatecommand=(dhcp_arp_options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
+        self.dhcp_snoop_vlan_entry.grid(row=0, column=3, sticky=tk.W)
         self.dhcp_snoop_vlan_entry.insert(0, "1,2-4,5")
-        self.disable_dhcp_snooping_option82_checkbox = tk.Checkbutton(master=options_frame, variable=self.dhcp_snooping_option82_check, onvalue=True, offvalue=False)
-        self.disable_dhcp_snooping_option82_checkbox.grid(row=4, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        dhcp_option82_text = tk.Label(master=options_frame, text="Disable option82 injection. (Improves compatibility with DCHP servers)", font=(self.font, 10))
-        dhcp_option82_text.grid(row=4, column=1, columnspan=4, sticky=tk.W)
-        self.enable_arp_inspection_checkbox = tk.Checkbutton(master=options_frame, variable=self.arp_inspection_check, onvalue=True, offvalue=False)
-        self.enable_arp_inspection_checkbox.grid(row=5, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        arp_vlan_text = tk.Label(master=options_frame, text="Enable ARP inspection on vlans", font=(self.font, 10))
-        arp_vlan_text.grid(row=5, column=1, columnspan=2, sticky=tk.W)
-        self.arp_inspection_vlan_entry = tk.Entry(master=options_frame, width=10, validate="all", validatecommand=(options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
-        self.arp_inspection_vlan_entry.grid(row=5, column=3, sticky=tk.W)
+        self.disable_dhcp_snooping_option82_checkbox = tk.Checkbutton(master=dhcp_arp_options_frame, variable=self.dhcp_snooping_option82_check, onvalue=True, offvalue=False)
+        self.disable_dhcp_snooping_option82_checkbox.grid(row=1, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        dhcp_option82_text = tk.Label(master=dhcp_arp_options_frame, text="Disable option82 injection. (Improves compatibility with DCHP servers)", font=(self.font, 10))
+        dhcp_option82_text.grid(row=1, column=1, columnspan=4, sticky=tk.W)
+        self.enable_arp_inspection_checkbox = tk.Checkbutton(master=dhcp_arp_options_frame, variable=self.arp_inspection_check, onvalue=True, offvalue=False)
+        self.enable_arp_inspection_checkbox.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.E)
+        arp_vlan_text = tk.Label(master=dhcp_arp_options_frame, text="Enable ARP inspection on vlans", font=(self.font, 10))
+        arp_vlan_text.grid(row=2, column=1, columnspan=2, sticky=tk.W)
+        self.arp_inspection_vlan_entry = tk.Entry(master=dhcp_arp_options_frame, width=10, validate="all", validatecommand=(dhcp_arp_options_frame.register(lambda input:True if (re.match("^[0-9,-]*$", input) or input == "") else False), "%P"))
+        self.arp_inspection_vlan_entry.grid(row=2, column=3, sticky=tk.W)
         self.arp_inspection_vlan_entry.insert(0, "1,2-4,5")
+        #########################################################################################################
 
         # Populate console frame.
         self.list = tk.Listbox(master=console_frame, background="black", foreground="green", highlightcolor="green")
@@ -725,7 +749,7 @@ class MainUI():
                             # Check if the user has enabled vlan changing.
                             if self.change_vlan_check.get():
                                 # Get vlan new and old numbers from the user.
-                                vlan_command_text = change_access_port_vlans(self.vlan_old_entry.get(), self.vlan_new_entry.get(), ssh_device)                                
+                                vlan_command_text = change_port_vlans(self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), ssh_device)                                
 
                                 # Run the commands on the switch and show output, then ask the user if the output looks good.
                                 output += "\n\n"
