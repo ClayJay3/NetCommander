@@ -84,6 +84,8 @@ class MainUI():
         self.force_telnet_check = None
         self.vlan_old_entry = None
         self.vlan_new_entry = None
+        self.access_vlan_radio_select = None
+        self.voice_vlan_radio_select = None
         self.vlan_entries_state_enabled = True
         self.dhcp_snoop_vlan_entry = None
         self.disable_dhcp_snooping_option82_checkbox = None
@@ -246,14 +248,14 @@ class MainUI():
         vlan_change_text.grid(row=0, column=1, columnspan=1, sticky=tk.W)
         self.vlan_old_entry = tk.Entry(master=vlan_options_frame, width=10, validate="all", validatecommand=(vlan_options_frame.register(lambda input:True if str.isdigit(input) or input == "" else False), "%P"))
         self.vlan_old_entry.grid(row=0, column=2, sticky=tk.W)
-        vlan_change_text = tk.Label(master=vlan_options_frame, text=" access ports to VLAN", font=(self.font, 10))
+        vlan_change_text = tk.Label(master=vlan_options_frame, text=" ports to VLAN", font=(self.font, 10))
         vlan_change_text.grid(row=0, column=3, columnspan=1, sticky=tk.W)
         self.vlan_new_entry = tk.Entry(master=vlan_options_frame, width=10, validate="all", validatecommand=(vlan_options_frame.register(lambda input:True if (str.isdigit(input) or input == "") else False), "%P"))
         self.vlan_new_entry.grid(row=0, column=4, sticky=tk.W)
-        access_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change access VLANs", variable=self.toggle_voice_vlan_check, value=False)
-        access_vlan_radio_select.grid(row=1, column=0, columnspan=3, sticky=tk.W)
-        voice_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change voice VLANs", variable=self.toggle_voice_vlan_check, value=True)
-        voice_vlan_radio_select.grid(row=1, column=3, columnspan=3, sticky=tk.W)
+        self.access_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change access VLANs", variable=self.toggle_voice_vlan_check, value=False)
+        self.access_vlan_radio_select.grid(row=1, column=0, columnspan=10, sticky=tk.W)
+        self.voice_vlan_radio_select = tk.Radiobutton(master=vlan_options_frame, text="Change voice VLANs", variable=self.toggle_voice_vlan_check, value=True)
+        self.voice_vlan_radio_select.grid(row=1, column=3, columnspan=6, sticky=tk.W)
         #########################################################################################################
         turbo_options_frame = tk.Frame(master=options_frame, relief=tk.GROOVE, borderwidth=2)   # Create frame from grouping turbo options.
         turbo_options_frame.grid(row=3, rowspan=2, column=0, columnspan=5, sticky=tk.NSEW)
@@ -933,12 +935,16 @@ class MainUI():
             # Disable elements.
             self.vlan_old_entry.configure(state="disable")
             self.vlan_new_entry.configure(state="disable")
+            self.access_vlan_radio_select.configure(state="disable")
+            self.voice_vlan_radio_select.configure(state="disable")
             # Update toggle var.
             self.vlan_entries_state_enabled = False
         elif self.change_vlan_check.get() and not self.vlan_entries_state_enabled:
             # Disable elements.
             self.vlan_old_entry.configure(state="normal")
             self.vlan_new_entry.configure(state="normal")
+            self.access_vlan_radio_select.configure(state="normal")
+            self.voice_vlan_radio_select.configure(state="normal")
             # Update toggle var.
             self.vlan_entries_state_enabled = True
         # DHCP entries and checkboxes.

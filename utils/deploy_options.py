@@ -70,9 +70,9 @@ def change_port_vlans(old_vlan, new_vlan, toggle_voice_vlans, ssh_device):
                     
                     # Check if we are changing access vlans or voice vlans.
                     if toggle_voice_vlans:
-                        command_text += f"sw acc vlan {new_vlan}\n"
-                    else:
                         command_text += f"sw voice vlan {new_vlan}\n"
+                    else:
+                        command_text += f"sw acc vlan {new_vlan}\n"
 
 
                     # Clear interface_range text and reset counter.
@@ -97,9 +97,9 @@ def change_port_vlans(old_vlan, new_vlan, toggle_voice_vlans, ssh_device):
         command_text += f"int range {interface_ranges}\n"
         # Check if we are changing access vlans or voice vlans.
         if toggle_voice_vlans:
-            command_text += f"sw acc vlan {new_vlan}\n"
-        else:
             command_text += f"sw voice vlan {new_vlan}\n"
+        else:
+            command_text += f"sw acc vlan {new_vlan}\n"
         # Add end to exit global config mode.
         command_text += "end\n"
 
