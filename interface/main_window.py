@@ -747,6 +747,8 @@ class MainUI():
                                 except ReadTimeout:
                                     self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
                                     messagebox.showwarning(message=f"Couldn't get command output for {device['ip_addr']}. However, it is likely the commands still ran and the console just took too long to print output.")
+                                except Exception as e:
+                                    self.logger.error(f"Netmiko ERROR: {e}")
 
                             # Check if the user has enabled vlan changing.
                             if self.change_vlan_check.get():
