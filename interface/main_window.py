@@ -691,18 +691,30 @@ class MainUI():
             # Check if selected devices list is empty.
             if len(self.selected_devices) > 0:
                 # Check to make sure the user entered something for the vlan change if selected.
-                if self.change_vlan_check.get() and len(self.vlan_old_entry.get()) <= 0 and len(self.vlan_new_entry.get()) <= 0:
+                if len(self.command_text) <= 1:
+                    # Print log and show messagebox to user.
+                    self.logger.info("Command textbox is empty!")
+                    messagebox.showwarning(title="Warning!", message="Command textbox is empty!")
+                    # Set toggle to keep deploy from continuing.
+                    self.user_result = False
+                elif self.change_vlan_check.get() and (len(self.vlan_old_entry.get()) <= 0 or len(self.vlan_new_entry.get()) <= 0):
                     # Print log and show messagebox.
                     self.logger.warning("Can't start deploy because no vlans have been entered to change! If you don't want to enter vlans, then uncheck the box in the options pane.")
                     messagebox.showwarning(message="Can't start deploy because the user didn't specify old and new vlans even though the checkbox was ticked.")
+                    # Set toggle to keep deploy from continuing.
+                    self.user_result = False
                 elif self.dhcp_snooping_check.get() and len(self.dhcp_snoop_vlan_entry.get()) <= 0:
                     # Print log and show messagebox.
                     self.logger.warning("Can't start deploy because no vlans have been entered to snoop on!")
                     messagebox.showwarning(message="Can't start deploy because no vlans have been entered to snoop on! You must enter vlans like: 1,2-3,4")
-                    if self.arp_inspection_check.get() and len(self.arp_inspection_vlan_entry.get()) <= 0:
-                        # Print log and show messagebox.
-                        self.logger.warning("Can't start deploy because no vlans have been entered to do arp inspection on!")
-                        messagebox.showwarning(message="Can't start deploy because no vlans have been entered to do arp inspection on! You must enter vlans like: 1,2-3,4")
+                    # Set toggle to keep deploy from continuing.
+                    self.user_result = False
+                elif self.arp_inspection_check.get() and len(self.arp_inspection_vlan_entry.get()) <= 0:
+                    # Print log and show messagebox.
+                    self.logger.warning("Can't start deploy because no vlans have been entered to do arp inspection on!")
+                    messagebox.showwarning(message="Can't start deploy because no vlans have been entered to do arp inspection on! You must enter vlans like: 1,2-3,4")
+                    # Set toggle to keep deploy from continuing.
+                    self.user_result = False
                 else:
                     # Before starting threads, ask user if they are sure they want to continue.
                     self.logger.info("Asking user if they are sure they want to start the deploy process...")
@@ -718,69 +730,65 @@ class MainUI():
                 # Print log and show messagebox.
                 self.logger.warning("Can't start deploy because no devices have been selected.")
                 messagebox.showwarning(message="Can't start deploy because no devices have been selected.")
+                # Set toggle to keep deploy from continuing.
+                self.user_result = False
 
         # Check user is sure they want to start deploy.
         if self.user_result:
-            # Check if commands are empty.
-            if len(self.command_text) > 1:
-                if not self.already_deploying:
-                    # Toggle that deploy has been started and print log.
-                    self.already_deploying = True
-                    self.logger.info("Command deploy has been started!")
-                    # Set window size. Take it out of fullscreen.
-                    self.window.wm_state('iconic')
-                    # Print log.
-                    self.logger.info(f"NetCommander will be running these commands on the selected switches: \n{self.command_text}")
+            if not self.already_deploying:
+                # Toggle that deploy has been started and print log.
+                self.already_deploying = True
+                self.logger.info("Command deploy has been started!")
+                # Set window size. Take it out of fullscreen.
+                self.window.wm_state('iconic')
+                # Print log.
+                self.logger.info(f"NetCommander will be running these commands on the selected switches: \n{self.command_text}")
 
-                # Get the next up switch.
-                device = self.selected_devices.pop(0)
-                # Start a new thread that connects to each ip and runs the given commands.
-                exit_messages, output = self.deploy_button_back_process(self.command_text, device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
-                
-                print(exit_messages)
+            # Get the next up switch.
+            device = self.selected_devices.pop(0)
+            # Start a new thread that connects to each ip and runs the given commands.
+            exit_messages, output = self.deploy_button_back_process(self.command_text, device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
+            
+            print(exit_messages)
 
-                # Show the output to the user and ask if it is correct.
-                text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
-                # Write output to a file.
-                with open(f"{self.directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
-                    for line in output:
-                        file.write(line)
+            # Show the output to the user and ask if it is correct.
+            text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
+            # Write output to a file.
+            with open(f"{self.directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
+                for line in output:
+                    file.write(line)
 
-                # Check if turbo deploy is enabled.
-                if self.turbo_deploy_check.get():
-                    correct_output = True
-                    continue_deploy = True
-                else:
-                    # Ask the user if the output is correct.
-                    correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                    # Ask the user if they want to continue.
-                    continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
-
-                # If the output was incorrect add the switch to a list.
-                if not correct_output:
-                    self.bad_deploys.append(device)
-                # If the user doesn't want to continue the deploy then stop looping.
-                if not continue_deploy:
-                    # Print log.
-                    self.logger.info("The deploy has been canceled by the user.")
-
-                # Check if the command deployment is done.
-                if len(self.selected_devices) <= 0 and self.already_deploying or not continue_deploy:
-                    # Print bad deploy devices to logs.
-                    self.logger.info(f"Unable to fully deploy commands to these devices: {self.bad_deploys}")
-                    # Print log and show messagebox stating the deploy has finished.
-                    self.logger.info(f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands. Opening window with the IPs now...")
-                    messagebox.showinfo(message=f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands.")
-                    # Check if we need to open the window.
-                    if len(self.bad_deploys) > 0:
-                        text_popup(title="Bad Deploy Devices", text=[f"{device['ip_addr']} - {device['hostname']}\n" for device in self.bad_deploys])
-
-                    # Reset deploy toggle.
-                    self.already_deploying = False
+            # Check if turbo deploy is enabled.
+            if self.turbo_deploy_check.get():
+                correct_output = True
+                continue_deploy = True
             else:
-                # Print log and show messagebox to user.
-                self.logger.info("Command textbox is empty!")
-                messagebox.showwarning(title="Warning!", message="Command textbox is empty!")
+                # Ask the user if the output is correct.
+                correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                # Ask the user if they want to continue.
+                continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
+
+            # If the output was incorrect add the switch to a list.
+            if not correct_output:
+                self.bad_deploys.append(device)
+            # If the user doesn't want to continue the deploy then stop looping.
+            if not continue_deploy:
+                # Print log.
+                self.logger.info("The deploy has been canceled by the user.")
+
+            # Check if the command deployment is done.
+            if len(self.selected_devices) <= 0 and self.already_deploying or not continue_deploy:
+                # Print bad deploy devices to logs.
+                self.logger.info(f"Unable to fully deploy commands to these devices: {self.bad_deploys}")
+                # Print log and show messagebox stating the deploy has finished.
+                self.logger.info(f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands. Opening window with the IPs now...")
+                messagebox.showinfo(message=f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands.")
+                # Check if we need to open the window.
+                if len(self.bad_deploys) > 0:
+                    text_popup(title="Bad Deploy Devices", text=[f"{device['ip_addr']} - {device['hostname']}\n" for device in self.bad_deploys])
+
+                # Reset deploy toggle.
+                self.already_deploying = False
         else:
             # Print log.
             self.logger.info("Command deploy has been canceled.")
