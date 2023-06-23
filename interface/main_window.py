@@ -58,6 +58,10 @@ class MainUI():
         self.bad_deploys = []
         self.deploy_devices_total_count = 0
         self.deploy_frames_state_enabled = True
+        self.exit_messages = []
+        self.switch_output = []
+        self.deploy_thread = None
+        self.deploy_device = None
 
         # Open log file for displaying in console window.
         self.log_file = open("logs/latest.log", "r", encoding="utf-8")
@@ -292,7 +296,7 @@ class MainUI():
         self.dhcp_snoop_vlan_entry.insert(0, "1,2-4,5")
         self.disable_dhcp_snooping_option82_checkbox = tk.Checkbutton(master=dhcp_arp_options_frame, variable=self.dhcp_snooping_option82_check, onvalue=True, offvalue=False)
         self.disable_dhcp_snooping_option82_checkbox.grid(row=1, rowspan=1, column=0, columnspan=1, sticky=tk.E)
-        dhcp_option82_text = tk.Label(master=dhcp_arp_options_frame, text="Disable option82 injection. (Improves compatibility with DCHP servers)", font=(self.font, 10))
+        dhcp_option82_text = tk.Label(master=dhcp_arp_options_frame, text="Disable option82 injection. (Improves compatibility with DHCP servers)", font=(self.font, 10))
         dhcp_option82_text.grid(row=1, column=1, columnspan=4, sticky=tk.W)
         self.enable_arp_inspection_checkbox = tk.Checkbutton(master=dhcp_arp_options_frame, variable=self.arp_inspection_check, onvalue=True, offvalue=False)
         self.enable_arp_inspection_checkbox.grid(row=2, rowspan=1, column=0, columnspan=1, sticky=tk.E)
@@ -657,6 +661,10 @@ class MainUI():
             self.user_result = False
             self.bad_deploys = []
             self.deploy_devices_total_count = 0
+            self.exit_messages = {"info": "", "warning": "", "error": "", "critical": ""}
+            self.switch_output = []
+            self.deploy_thread = None
+            self.deploy_device = None
 
             # Create deploy output directory.
             self.directory_name = f"deploy_outputs/{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -744,63 +752,73 @@ class MainUI():
                 # Print log.
                 self.logger.info(f"NetCommander will be running these commands on the selected switches: \n{self.command_text}")
 
-            # Get the next up switch.
-            device = self.selected_devices.pop(0)
-            # Start a new thread that connects to each ip and runs the given commands.
-            exit_messages, output = self.deploy_button_back_process(self.command_text, device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
-            
-            print(exit_messages)
+            # Check if thread is finished.
+            if self.deploy_thread is None:
+                # Get the next up switch.
+                self.deploy_device = self.selected_devices.pop(0)
+                # Start a new thread that connects to each ip and runs the given commands.
+                self.deploy_thread = Thread(target=self.deploy_button_back_process, args=[self.command_text, self.deploy_device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), self.change_vlan_check.get(), self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), self.dhcp_snooping_check.get(), self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get(), self.arp_inspection_check.get(), self.arp_inspection_vlan_entry.get(), self.exit_messages, self.switch_output])
+                self.deploy_thread.start()
+            elif not self.deploy_thread.is_alive():
+                # Close thread.
+                self.deploy_thread.join()
 
-            # Show the output to the user and ask if it is correct.
-            text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
-            # Write output to a file.
-            with open(f"{self.directory_name}/{device['hostname']}({device['ip_addr']}).txt", 'w+') as file:
-                for line in output:
-                    file.write(line)
+                print(self.exit_messages)
+                print(self.switch_output[0])
 
-            # Check if turbo deploy is enabled.
-            if self.turbo_deploy_check.get():
-                correct_output = True
-                continue_deploy = True
-            else:
-                # Ask the user if the output is correct.
-                correct_output = messagebox.askyesno(title=f"Confirm correct output for {device['hostname']}, {device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
-                # Ask the user if they want to continue.
-                continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
+                # Show the output to the user and ask if it is correct.
+                text_popup(f"Command Output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", self.switch_output[0], x_grid_size=10, y_grid_size=10)
+                # Write output to a file.
+                with open(f"{self.directory_name}/{self.deploy_device['hostname']}({self.deploy_device['ip_addr']}).txt", 'w+') as file:
+                    for line in self.switch_output[0]:
+                        file.write(line)
 
-            # If the output was incorrect add the switch to a list.
-            if not correct_output:
-                self.bad_deploys.append(device)
-            # If the user doesn't want to continue the deploy then stop looping.
-            if not continue_deploy:
-                # Print log.
-                self.logger.info("The deploy has been canceled by the user.")
+                # Check if turbo deploy is enabled.
+                if self.turbo_deploy_check.get():
+                    correct_output = True
+                    continue_deploy = True
+                else:
+                    # Ask the user if the output is correct.
+                    correct_output = messagebox.askyesno(title=f"Confirm correct output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                    # Ask the user if they want to continue.
+                    continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
-            # Check if the command deployment is done.
-            if len(self.selected_devices) <= 0 and self.already_deploying or not continue_deploy:
-                # Print bad deploy devices to logs.
-                self.logger.info(f"Unable to fully deploy commands to these devices: {self.bad_deploys}")
-                # Print log and show messagebox stating the deploy has finished.
-                self.logger.info(f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands. Opening window with the IPs now...")
-                messagebox.showinfo(message=f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands.")
-                # Check if we need to open the window.
-                if len(self.bad_deploys) > 0:
-                    text_popup(title="Bad Deploy Devices", text=[f"{device['ip_addr']} - {device['hostname']}\n" for device in self.bad_deploys])
+                # If the output was incorrect add the switch to a list.
+                if not correct_output:
+                    self.bad_deploys.append(self.deploy_device)
+                # If the user doesn't want to continue the deploy then stop looping.
+                if not continue_deploy:
+                    # Print log.
+                    self.logger.info("The deploy has been canceled by the user.")
 
-                # Reset deploy toggle.
-                self.already_deploying = False
+                # Check if the command deployment is done.
+                if len(self.selected_devices) <= 0 and self.already_deploying or not continue_deploy:
+                    # Print bad deploy devices to logs.
+                    self.logger.info(f"Unable to fully deploy commands to these devices: {self.bad_deploys}")
+                    # Print log and show messagebox stating the deploy has finished.
+                    self.logger.info(f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands. Opening window with the IPs now...")
+                    messagebox.showinfo(message=f"The command deploy has finished! {len(self.bad_deploys)} out of {self.deploy_devices_total_count} did not successfully execute the given commands.")
+                    # Check if we need to open the window.
+                    if len(self.bad_deploys) > 0:
+                        text_popup(title="Bad Deploy Devices", text=[f"{self.deploy_device['ip_addr']} - {self.deploy_device['hostname']}\n" for self.deploy_device in self.bad_deploys])
+
+                    # Reset deploy toggle.
+                    self.already_deploying = False
+                else:
+                    # Get the next up switch.
+                    self.deploy_device = self.selected_devices.pop(0)
+                    # Start a new thread that connects to each ip and runs the given commands.
+                    self.deploy_thread = Thread(target=self.deploy_button_back_process, args=[self.command_text, self.deploy_device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), self.change_vlan_check.get(), self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), self.dhcp_snooping_check.get(), self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get(), self.arp_inspection_check.get(), self.arp_inspection_vlan_entry.get(), self.exit_messages, self.switch_output]).start()
         else:
             # Print log.
             self.logger.info("Command deploy has been canceled.")
 
-    def deploy_button_back_process(self, command_text, device, usernames, passwords, enable_secrets, enable_telnet, force_telnet) -> None:
+    def deploy_button_back_process(self, command_text, device, usernames, passwords, enable_secrets, enable_telnet, force_telnet, change_vlan_check, vlan_old_entry, vlan_new_entry, toggle_voice_vlan_check, dhcp_snooping_check, dhcp_snoop_vlan_entry, dhcp_snooping_option82_check, arp_inspection_check, arp_inspection_vlan_entry, exit_messages, switch_output) -> None:
         """
         Helper function for Deploy Button, deploys commands to a single device in a new thread.
         """
         # Create instance variables.
-        exit_messages = {"info": "", "warning": "", "error": "", "critical": ""}
         output = ""
-
         # Attempt to login to the given device.
         ssh_device = ssh_autodetect_info(usernames, passwords, enable_secrets, enable_telnet, force_telnet, device["ip_addr"])
         connection = ssh_telnet(ssh_device, enable_telnet, force_telnet, store_config_info=True)
@@ -827,9 +845,9 @@ class MainUI():
                             self.logger.error(f"Netmiko ERROR: {e}")
 
                     # Check if the user has enabled vlan changing.
-                    if self.change_vlan_check.get():
+                    if change_vlan_check:
                         # Get vlan new and old numbers from the user.
-                        vlan_command_text = change_port_vlans(self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), ssh_device)                                
+                        vlan_command_text = change_port_vlans(vlan_old_entry, vlan_new_entry, toggle_voice_vlan_check, ssh_device)                                
 
                         # Run the commands on the switch and show output, then ask the user if the output looks good.
                         output += "\n\n"
@@ -847,9 +865,9 @@ class MainUI():
                         output += "\n\n"
 
                     # Check if the user has enabled DHCP snooping option.
-                    if self.dhcp_snooping_check.get():
+                    if dhcp_snooping_check:
                         # Get vlan new and old numbers from the user.
-                        vlan_command_text = setup_dhcp_snooping_on_trunks(ssh_device, self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get())                                
+                        vlan_command_text = setup_dhcp_snooping_on_trunks(ssh_device, dhcp_snoop_vlan_entry, dhcp_snooping_option82_check)                                
 
                         # Run the commands on the switch and show output, then ask the user if the output looks good.
                         output += "\n\n"
@@ -867,9 +885,9 @@ class MainUI():
                         output += "\n\n"
 
                         # Check if the user has enabled ARP inspection option.
-                        if self.arp_inspection_check.get():
+                        if arp_inspection_check:
                             # Get vlan new and old numbers from the user.
-                            vlan_command_text = setup_dynamic_arp_inspection_on_trunks(ssh_device, self.arp_inspection_vlan_entry.get())                                
+                            vlan_command_text = setup_dynamic_arp_inspection_on_trunks(ssh_device, arp_inspection_vlan_entry)                                
 
                             # Run the commands on the switch and show output, then ask the user if the output looks good.
                             output += "\n\n"
@@ -900,7 +918,8 @@ class MainUI():
             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
             exit_messages += "Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!\n"
 
-        return exit_messages, output
+        # Append compiled output to passed in variable.
+        switch_output.append(output)
 
     def mass_ping_button_callback(self) -> None:
         """
@@ -1102,7 +1121,7 @@ class MainUI():
             # If so, call the deploy callback function to handle threads and deploy logic.
             self.deploy_button_callback()
         elif not self.deploy_frames_state_enabled:
-            # Disable frames so user can't jack with the important controls.
+            # Reenabled frames.
             self.enable_children(self.options_frame)
             self.enable_children(self.creds_frame)
             # Set deploy frame toggle.
