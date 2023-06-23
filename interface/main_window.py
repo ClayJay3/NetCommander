@@ -734,11 +734,11 @@ class MainUI():
 
                 # Get the next up switch.
                 device = self.selected_devices.pop(0)
-                exit_messages = {"info": "", "warning": "", "error": "", "critical": ""}
-                output = "test"
                 # Start a new thread that connects to each ip and runs the given commands.
-                # exit_messages, output = self.deploy_button_back_process(text, device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
+                exit_messages, output = self.deploy_button_back_process(self.command_text, device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get())
                 
+                print(exit_messages)
+
                 # Show the output to the user and ask if it is correct.
                 text_popup(f"Command Output for {device['hostname']}, {device['ip_addr']}", output, x_grid_size=10, y_grid_size=10)
                 # Write output to a file.
@@ -791,6 +791,7 @@ class MainUI():
         """
         # Create instance variables.
         exit_messages = {"info": "", "warning": "", "error": "", "critical": ""}
+        output = ""
 
         # Attempt to login to the given device.
         ssh_device = ssh_autodetect_info(usernames, passwords, enable_secrets, enable_telnet, force_telnet, device["ip_addr"])
@@ -804,7 +805,6 @@ class MainUI():
                     # Print log.
                     self.logger.info(f"Connected to device {device['ip_addr']}. Running commands...")
 
-                    output = ""
                     # Run the commands on the switch and show output, then ask the user if the output looks good.
                     for line in command_text.splitlines():
                         # Catch timeouts.
@@ -891,6 +891,8 @@ class MainUI():
         except OSError:
             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
             exit_messages += "Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!\n"
+
+        return exit_messages, output
 
     def mass_ping_button_callback(self) -> None:
         """
@@ -1095,8 +1097,24 @@ class MainUI():
             # Disable frames so user can't jack with the important controls.
             self.enable_children(self.options_frame)
             self.enable_children(self.creds_frame)
-            # Set toggle.
+            # Set deploy frame toggle.
             self.deploy_frames_state_enabled = True
+            # Switch all check and entry toggles to be the opposite of what they are. THis makes the current widgets disable.
+            # Vlan change entries.
+            if not self.change_vlan_check.get():
+                self.vlan_entries_state_enabled = True
+            else:
+                self.vlan_entries_state_enabled = False
+            # DHCP entries and checkboxes.
+            if not self.dhcp_snooping_check.get():
+                self.dhcp_snoop_vlan_entry_state_enabled = True
+            else:
+                self.dhcp_snoop_vlan_entry_state_enabled = False
+            # ARP entry.
+            if not self.arp_inspection_check.get():
+                self.arp_inspection_vlan_entry_state_enabled = True
+            else:
+                self.arp_inspection_vlan_entry_state_enabled = False
 
         # Call main window event loop.
         self.window.update()
