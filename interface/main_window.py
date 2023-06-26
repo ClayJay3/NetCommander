@@ -58,7 +58,7 @@ class MainUI():
         self.bad_deploys = []
         self.deploy_devices_total_count = 0
         self.deploy_frames_state_enabled = True
-        self.exit_messages = []
+        self.exit_messages = {}
         self.switch_output = []
         self.deploy_thread = None
         self.deploy_device = None
@@ -661,7 +661,7 @@ class MainUI():
             self.user_result = False
             self.bad_deploys = []
             self.deploy_devices_total_count = 0
-            self.exit_messages = {"info": "", "warning": "", "error": "", "critical": ""}
+            self.exit_messages = {"info": [], "warning": [], "error": [], "critical": []}
             self.switch_output = []
             self.deploy_thread = None
             self.deploy_device = None
@@ -756,6 +756,9 @@ class MainUI():
             if self.deploy_thread is None:
                 # Get the next up switch.
                 self.deploy_device = self.selected_devices.pop(0)
+                # Reset output variables.
+                self.exit_messages = {"info": [], "warning": [], "error": [], "critical": []}
+                self.switch_output = []
                 # Start a new thread that connects to each ip and runs the given commands.
                 self.deploy_thread = Thread(target=self.deploy_button_back_process, args=[self.command_text, self.deploy_device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), self.change_vlan_check.get(), self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), self.dhcp_snooping_check.get(), self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get(), self.arp_inspection_check.get(), self.arp_inspection_vlan_entry.get(), self.exit_messages, self.switch_output])
                 self.deploy_thread.start()
@@ -764,22 +767,57 @@ class MainUI():
                 self.deploy_thread.join()
 
                 print(self.exit_messages)
-                print(self.switch_output[0])
 
-                # Show the output to the user and ask if it is correct.
-                text_popup(f"Command Output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", self.switch_output[0], x_grid_size=10, y_grid_size=10)
-                # Write output to a file.
-                with open(f"{self.directory_name}/{self.deploy_device['hostname']}({self.deploy_device['ip_addr']}).txt", 'w+') as file:
-                    for line in self.switch_output[0]:
-                        file.write(line)
+                # Check if we got any error messages.
+                show_output_box = True
+                if any(len(val[1]) > 0 for val in self.exit_messages.items()):
+                    # Loop through keys in exit message dictionary.
+                    for key in self.exit_messages.keys():
+                        # Check message type and show messagebox to user.
+                        if key == "info":
+                            # Show message to user.
+                            for info_message in self.exit_messages[key]:
+                                # Show info to user.
+                                messagebox.showinfo(title="Info", message=info_message)
+                        if key == "warning":
+                            # Show message to user.
+                            for warning_message in self.exit_messages[key]:
+                                # Show info to user.
+                                messagebox.showwarning(title="Warning", message=warning_message)
+                        if key == "error":
+                            # Show message to user.
+                            for error_message in self.exit_messages[key]:
+                                # Show info to user.
+                                messagebox.showerror(title="Error", message=error_message)
+                                # Set toggle to not show switch output.
+                                show_output_box = False
+                        if key == "critical":
+                            # Show message to user.
+                            for critical_message in self.exit_messages[key]:
+                                # Show info to user.
+                                messagebox.showcritical(title="CRITICAL", message=critical_message)
+                                # Set toggle to not show switch output.
+                                show_output_box = False
+
+                # Check if we should still show output text and get confirmation from user.
+                if show_output_box:
+                    # Show the output to the user and ask if it is correct.
+                    text_popup(f"Command Output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", self.switch_output[0], x_grid_size=10, y_grid_size=10)
+                    # Write output to a file.
+                    with open(f"{self.directory_name}/{self.deploy_device['hostname']}({self.deploy_device['ip_addr']}).txt", 'w+') as file:
+                        for line in self.switch_output[0]:
+                            file.write(line)
 
                 # Check if turbo deploy is enabled.
                 if self.turbo_deploy_check.get():
                     correct_output = True
                     continue_deploy = True
                 else:
-                    # Ask the user if the output is correct.
-                    correct_output = messagebox.askyesno(title=f"Confirm correct output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                    # Check if we should still show oyutput text and get confimation from user.
+                    if show_output_box:
+                        # Ask the user if the output is correct.
+                        correct_output = messagebox.askyesno(title=f"Confirm correct output for {self.deploy_device['hostname']}, {self.deploy_device['ip_addr']}", message="Is this output correct? Its output will be saved to the deploy_outputs folder.")
+                    
                     # Ask the user if they want to continue.
                     continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
@@ -805,10 +843,8 @@ class MainUI():
                     # Reset deploy toggle.
                     self.already_deploying = False
                 else:
-                    # Get the next up switch.
-                    self.deploy_device = self.selected_devices.pop(0)
-                    # Start a new thread that connects to each ip and runs the given commands.
-                    self.deploy_thread = Thread(target=self.deploy_button_back_process, args=[self.command_text, self.deploy_device, self.usernames, self.passwords, self.enable_secrets, self.enable_telnet_check.get(), self.force_telnet_check.get(), self.change_vlan_check.get(), self.vlan_old_entry.get(), self.vlan_new_entry.get(), self.toggle_voice_vlan_check.get(), self.dhcp_snooping_check.get(), self.dhcp_snoop_vlan_entry.get(), self.dhcp_snooping_option82_check.get(), self.arp_inspection_check.get(), self.arp_inspection_vlan_entry.get(), self.exit_messages, self.switch_output]).start()
+                    # Set deploy thread to None.
+                    self.deploy_thread = None
         else:
             # Print log.
             self.logger.info("Command deploy has been canceled.")
@@ -840,7 +876,7 @@ class MainUI():
                             output += connection.send_command(line, expect_string="#")
                         except ReadTimeout:
                             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
-                            exit_messages["warning"] += f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.\n"
+                            exit_messages["warning"].append(f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.")
                         except Exception as e:
                             self.logger.error(f"Netmiko ERROR: {e}")
 
@@ -859,7 +895,7 @@ class MainUI():
                                 output += connection.send_command(line, expect_string="#")
                             except ReadTimeout:
                                 self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
-                                exit_messages["warning"] += f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.\n"
+                                exit_messages["warning"].append(f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.")
 
                         # Append some newlines to the output to keep it pretty.
                         output += "\n\n"
@@ -879,7 +915,7 @@ class MainUI():
                                 output += connection.send_command(line, expect_string="#")
                             except ReadTimeout:
                                 self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
-                                exit_messages["warning"] += f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.\n"
+                                exit_messages["warning"].append(f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.")
                     
                         # Append some newlines to the output to keep it pretty.
                         output += "\n\n"
@@ -899,24 +935,24 @@ class MainUI():
                                     output += connection.send_command(line, expect_string="#")
                                 except ReadTimeout:
                                     self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. It is likely the commands still ran.")
-                                    exit_messages["warning"] += f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.\n"
+                                    exit_messages["warning"].append(f"Couldn't get command output for {device['ip_addr']} running command {line}. However, it is likely the command still ran and the console just took too long to print output.")
 
                             # Append some newlines to the output to keep it pretty.
                             output += "\n\n"
                 else:
                     # Print log and show messagebox.
                     self.logger.error(f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. Skipping and adding to bad deploy list...")
-                    exit_messages[error] += f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. The device will be skipped and marked as a bad deploy.\n"
+                    exit_messages["error"].append(f"Insignificant privilege level to safely run all commands on {device['ip_addr']}. The device will be skipped and marked as a bad deploy.")
 
                 # Disconnection from device.
                 connection.disconnect()
             else:
                 # Print log and show messagebox.
                 self.logger.error(f"Failed to connection to {device['ip_addr']}")
-                exit_messages[error] += "Couldn't connect to {device['ip_addr']}. Moving on to next device.\n"
+                exit_messages["error"].append(f"Couldn't connect to {device['ip_addr']}. Moving on to next device.")
         except OSError:
             self.logger.warning(f"Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
-            exit_messages += "Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!\n"
+            exit_messages["warning"].append("Couldn't get command output for {device['ip_addr']}. Paramiko reported the socket as being closed. It is recommended that you rerun your commands on this switch!")
 
         # Append compiled output to passed in variable.
         switch_output.append(output)
