@@ -120,6 +120,8 @@ class MainUI():
         self.window.attributes("-topmost", True)
         self.window.update()
         self.window.attributes("-topmost", False)
+        # Set minimum size of window.
+        self.window.minsize(1068, 831)
 
         # Create checkbox variables.
         self.enable_telnet_check = tk.BooleanVar(self.window)
@@ -765,8 +767,6 @@ class MainUI():
             elif not self.deploy_thread.is_alive():
                 # Close thread.
                 self.deploy_thread.join()
-
-                print(self.exit_messages)
 
                 # Check if we got any error messages.
                 show_output_box = True

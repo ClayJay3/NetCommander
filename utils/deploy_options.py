@@ -32,9 +32,15 @@ def change_port_vlans(old_vlan, new_vlan, toggle_voice_vlans, ssh_device):
     for interface in ssh_device["interfaces"]:
         # Catch key errors for malformed interface output.
         try:
-            # Check the interface vlan.
-            if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
-                interface_vlan_change_list.append(interface["name"])
+            # Check if we are changing voice VLAN ports.
+            if toggle_voice_vlans:
+                # Check the voice vlan.
+                if int(interface["switchport voice vlan"]) == int(old_vlan) and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                    interface_vlan_change_list.append(interface["name"])
+            else:
+                # Check the interface vlan.
+                if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                    interface_vlan_change_list.append(interface["name"])
         except KeyError as error:
             logger.error(f"KeyError ({error}): An interface output for {ssh_device['hostname']} was not received properly, skipping...")
 
@@ -102,6 +108,7 @@ def change_port_vlans(old_vlan, new_vlan, toggle_voice_vlans, ssh_device):
             command_text += f"sw acc vlan {new_vlan}\n"
         # Add end to exit global config mode.
         command_text += "end\n"
+        command_text += "show int status\n"
 
     return command_text
 
