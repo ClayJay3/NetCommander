@@ -117,6 +117,8 @@ def ssh_autodetect_info(usernames, passwords, enable_secrets, enable_telnet, for
                 break
             except ValueError:
                 logger.error(f"Unable to find switch prompt for {ip_addr}")
+            except OSError:
+                logger.error(f"Device forcefully closed the socket. Are your creds locked out?")
         else:
             # Set default value.
             remote_device["ip_address"] = ip_addr

@@ -22,7 +22,7 @@ def find_ranges(iterable):
         else:
             yield group[0], group[-1]
 
-def change_access_port_vlans(old_vlan, new_vlan, ssh_device):
+def change_port_vlans(old_vlan, new_vlan, toggle_voice_vlans, ssh_device):
     # Create instance variables and objects.
     logger = logging.getLogger(__name__)
     command_text = "end\nconf t\n"
@@ -32,9 +32,15 @@ def change_access_port_vlans(old_vlan, new_vlan, ssh_device):
     for interface in ssh_device["interfaces"]:
         # Catch key errors for malformed interface output.
         try:
-            # Check the interface vlan.
-            if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
-                interface_vlan_change_list.append(interface["name"])
+            # Check if we are changing voice VLAN ports.
+            if toggle_voice_vlans:
+                # Check the voice vlan.
+                if int(interface["switchport voice vlan"]) == int(old_vlan) and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                    interface_vlan_change_list.append(interface["name"])
+            else:
+                # Check the interface vlan.
+                if int(interface["switchport access vlan"]) == int(old_vlan) and interface["vlan_status"] == old_vlan and not interface["switchport mode trunk"] and ("Ap" not in interface["name"]) and "trunk" not in interface["vlan_status"]:
+                    interface_vlan_change_list.append(interface["name"])
         except KeyError as error:
             logger.error(f"KeyError ({error}): An interface output for {ssh_device['hostname']} was not received properly, skipping...")
 
@@ -67,7 +73,14 @@ def change_access_port_vlans(old_vlan, new_vlan, ssh_device):
                     interface_ranges = interface_ranges[:-2]
                     # Build commands list for vlan change.
                     command_text += f"int range {interface_ranges}\n"
-                    command_text += f"sw acc vlan {new_vlan}\n"
+                    
+                    # Check if we are changing access vlans or voice vlans.
+                    if toggle_voice_vlans:
+                        command_text += f"sw voice vlan {new_vlan}\n"
+                    else:
+                        command_text += f"sw acc vlan {new_vlan}\n"
+
+
                     # Clear interface_range text and reset counter.
                     interface_ranges = ""
                     range_counter = 0
@@ -88,9 +101,14 @@ def change_access_port_vlans(old_vlan, new_vlan, ssh_device):
         interface_ranges = interface_ranges[:-2]
         # Build commands list for vlan change.
         command_text += f"int range {interface_ranges}\n"
-        command_text += f"sw acc vlan {new_vlan}\n"
+        # Check if we are changing access vlans or voice vlans.
+        if toggle_voice_vlans:
+            command_text += f"sw voice vlan {new_vlan}\n"
+        else:
+            command_text += f"sw acc vlan {new_vlan}\n"
         # Add end to exit global config mode.
         command_text += "end\n"
+        command_text += "show int status\n"
 
     return command_text
 
