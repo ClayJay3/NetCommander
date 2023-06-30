@@ -2,6 +2,7 @@
 from ast import Tuple
 from functools import partial
 import re
+import time
 import logging
 from multiprocessing.pool import ThreadPool
 from netmiko.exceptions import NetmikoAuthenticationException, NetmikoTimeoutException, ReadTimeout
@@ -179,6 +180,13 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
             if connection is not None and connection.is_alive():
                 # Get parent hostname.
                 prompt = connection.find_prompt()[:-1]
+                # Sometimes switches or login prompt will confuse netmiko. Retry until we found the actual prompt.
+                retries = 0
+                while "http" in prompt and retries < 10:
+                    # Find prompt.
+                    prompt = connection.find_prompt()[:-1]
+                    # Sleep for output.
+                    time.sleep(1)
 
                 # Create base dictionary.
                 license_dict = {"ip_addr": ip_addr, "license_state": "NULL", "expire_period": "NULL", "raw_output": "NULL"}
@@ -261,10 +269,18 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
                                 line = line.replace("\t", " ")
                                 # Append info the license dictionary.
                                 license_dict["license_state"] = line
+                except ReadTimeout:
+                    # Nothing to do.
+                    pass
+                except Exception as error:
+                    # Print logger error.
+                    logger.warning(f"Difficulty parsing switch license output from {ip_addr}: {error}") 
 
-                    # Append information to the list.
-                    license_info.append(license_dict)
+                # Append information to the list.
+                license_info.append(license_dict)
 
+                # Catch any parse errors for cdp info.
+                try:
                     #######################################################################
                     # Get the IP and hostname info.
                     #######################################################################
@@ -297,9 +313,10 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
                         # Loop through each line and find the device info.
                         for line in info:
                             # Find device IP address.
-                            if "IP address:" in line:
+                            if ("IP address:" in line or "IPv4 Address" in line) and addr == "NULL":
                                 # Replace keyword.
                                 addr = line.replace("IP address: ", "").strip()
+                                addr = addr.replace("IPv4 Address:", "").strip()
                             # Attempt to determine if the device is a switch.
                             if "Platform" in line and "Switch" in line:
                                 is_switch = True
@@ -312,14 +329,16 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
                             # Check if export info is toggled on.
                             if export_info and len(addr) > 0:
                                 # Find device hostname.
-                                if "ID:" in line:
+                                if "ID:" in line and hostname == "NULL":
                                     # Replace keyword.
                                     line = line.replace("ID:", "")
+                                    # Remove any parenthesis and text inside parenthesis.
+                                    line = re.sub("[\(\[].*?[\)\]]", "", line)
                                     # Remove whitespace and store data.
                                     hostname = line.strip()
 
                                 # Find device software version info.
-                                if "Version :" not in line and "Version" in line:
+                                if "Version :" not in line and "Version:" not in line and "Version" in line:
                                     # Split line up by commas.
                                     line = re.split(",", line)
                                     # Loop through and find software name and version.
@@ -388,13 +407,14 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
                         device_info["parent_host"] = parent_host
                         device_info["parent_trunk_interface"] = parent_trunk_interface
 
-                        # Remove leading whitespace and append final ip to the cdp info list.
-                        if addr != "NULL" and is_switch:
-                            cdp_neighbors_result_ips.append(addr)
+                        if "mgmt" not in local_trunk_interface and "mgmt" not in parent_trunk_interface:
+                            # Remove leading whitespace and append final ip to the cdp info list.
+                            if addr != "NULL" and is_switch:
+                                cdp_neighbors_result_ips.append(addr)
 
-                        # Append device to the device infos list.
-                        if export_info and device_info["hostname"] != "NULL" and device_info not in device_infos:
-                            device_infos.append(device_info)
+                            # Append device to the device infos list.
+                            if export_info and device_info["hostname"] != "NULL" and device_info not in device_infos:
+                                device_infos.append(device_info)
 
                     # Close ssh connection.
                     connection.disconnect()
@@ -403,6 +423,9 @@ def get_cdp_neighbors_info(usernames, passwords, enable_secrets, enable_telnet, 
                 except ReadTimeout:
                     # Nothing to do.
                     pass
+                except Exception as error:
+                    # Print logger error.
+                    logger.warning(f"Difficulty parsing switch cdp output from {ip_addr}: {error}") 
 
     return cdp_neighbors_result_ips, device_infos
 
