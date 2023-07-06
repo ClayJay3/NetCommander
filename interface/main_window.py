@@ -822,7 +822,7 @@ class MainUI():
                     continue_deploy = messagebox.askyesno(title="Continue deploy?", message="Would you like to continue the command deploy?")
 
                 # If the output was incorrect add the switch to a list.
-                if not correct_output:
+                if not show_output_box or not correct_output:
                     self.bad_deploys.append(self.deploy_device)
                 # If the user doesn't want to continue the deploy then stop looping.
                 if not continue_deploy:
